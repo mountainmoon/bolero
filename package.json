@@ -1,0 +1,27 @@
+{
+  "name": "bolero",
+  "version": "0.0.1",
+  "description": "a web crawler for browsers(and maybe for Node in future)",
+  "homepage": "https://github.com/mountainmoon/bolero",
+  "keywords": ["crawler", "browser", "robot", "spider"],
+  "author": "KC YUE <yuekec@gmail.com>",
+  "engines": {
+    "node": ">= 0.6.0"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "mocha": "~1.21.x",
+    "should": "~4.0.0",
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mountainmoon/bolero.git"
+  },
+  "main": "./lib/bolero.js",
+  "licenses": [
+    {
+      "type": "MIT",
+      "url": "https://github.com/mountainmoon/bolero/blob/master/LICENSE"
+    }
+  ]
+}
