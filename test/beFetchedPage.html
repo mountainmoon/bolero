@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html>
+<head lang="en">
+    <meta charset="UTF-8">
+    <title></title>
+    <script>
+        var a={hehe:1};
+        var p = new Promise(function(res) {
+            setTimeout(function() {
+                res(a);
+            },3000);
+        });
+        p.then(function(r) {
+            console.log(a===r);
+        })
+    </script>
+</head>
+<body>
+    <a href="hehe.html"></a>
+    <a href="invalid.html"></a>
+    <img src="invalid.jpg">
+</body>
+</html>

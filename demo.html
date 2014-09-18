@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>On Mark</title>
+    <style>
+        html,body{
+            height: 100%;}
+        body{
+            font-family:Consolas, "Liberation Mono", Courier, monospace;
+            background: radial-gradient(ellipse at center, #d2ff52 0%,#91e842 100%); /* W3C */
+        }
+        header,article{text-align: center;}
+        *{margin: 0}
+        .domains{
+            display: none;
+        }
+        #display{
+            padding: 0.62em;
+            border-radius: 2px;
+            box-sizing: border-box;
+            width: 61.8%;;
+            margin:0 auto;
+            background: linear-gradient(to bottom, #ffd65e 0%,#febf04 100%); /* W3C */
+            margin-top: 5px;
+            max-height: 80%;
+            overflow-y:auto;
+            box-shadow: 0 0 3px;
+            text-align: center;
+        }
+        #display > article {
+            line-height: 2em;
+        }
+        #display > article > img{
+            margin-right: 3px;
+            box-shadow: 0 0 3px;
+        }
+        #imgNum{
+            color: #cd1914;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+
+<section id="controller">
+    <!--
+    <header><h2>window</h2></header>
+    <article>
+        <label for="key">Start: </label>
+        <input type="text" id="key" placeholder="on your mark" data-value="http://www.douban.com/search?q=Evangelion"/>
+        <input type="button" id="go" value="GO!"/>
+    </article>
+    -->
+</section>
+<section id="domains" class="domains">
+    <header></header>
+    <article>
+
+    </article>
+</section>
+<section id="display" class="box">
+    Open the console. After "pause, turn:1" has shown, call steptwo()
+    <!--
+    <header>Result Images: </header>
+    <article>
+        <button id="loadMore" style="" disabled>show more images,remains <span id="imgNum">0</span> imgs</button><div style="clear:both"></div>
+    </article>
+    -->
+</section>
+<script src="bolero.js"></script>
+<script>
+    var finalResult;
+    var turnResults = [];
+    var clawer = require('clawer');
+    var tagPropREs= require('parser').tagPropREs;
+    var turn = 1;
+
+    //监听turn，每轮结束后暂停，对获取的url进行筛选再继续fetch
+    clawer.on('turn', function(results) {
+        turnResults.push(results);
+        clawer.pause();
+        console.log('pause, turn:', turn++);
+    });
+
+    //设置目标，
+    clawer.config('http://www.douban.com/search?q=Evangelion',
+            tagPropREs([['a', 'href'], ['img', 'src']])).then(function() {
+                clawer.run(5).then(function(results) {
+                    finalResult = results;
+                    console.log(results);
+                })
+            });
+
+    function configAndMoveon(url) {
+        clawer.config(url).then(function() {
+            clawer.moveon();
+        })
+    }
+    //第一轮获取资源完毕后，筛选url，进行第二轮资源获取
+    function steptwo() {
+/*        var _result = turnResults[0]['http://www.douban.com/search?q=Evangelion'].a;
+        _result = _result.slice(41, 66);
+        _result = _result.map(function(url) {
+            url = url.substring(url.indexOf('http%3A'), url.indexOf('&query='));
+            return decodeURIComponent(url);
+        })*/
+        configAndMoveon(turnResults[0]['http://www.douban.com/search?q=Evangelion'].a.slice(41, 46));
+    }
+</script>
+</body>
+</html>
