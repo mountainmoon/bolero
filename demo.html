@@ -59,7 +59,7 @@
     </article>
 </section>
 <section id="display" class="box">
-    Open the console. After "pause, turn:1" has shown, call steptwo()
+    Add tentacle.js to your TamperMonkey or Greasemonkey. Open the console. After "pause, turn:1" has shown, call steptwo()
     <!--
     <header>Result Images: </header>
     <article>
@@ -75,14 +75,14 @@
     var tagPropREs= require('parser').tagPropREs;
     var turn = 1;
 
-    //¼àÌıturn£¬Ã¿ÂÖ½áÊøºóÔİÍ££¬¶Ô»ñÈ¡µÄurl½øĞĞÉ¸Ñ¡ÔÙ¼ÌĞøfetch
+    //ç›‘å¬turnï¼Œæ¯è½®ç»“æŸåæš‚åœï¼Œå¯¹è·å–çš„urlè¿›è¡Œç­›é€‰å†ç»§ç»­fetch
     clawer.on('turn', function(results) {
         turnResults.push(results);
         clawer.pause();
         console.log('pause, turn:', turn++);
     });
 
-    //ÉèÖÃÄ¿±ê£¬
+    //è®¾ç½®ç›®æ ‡ï¼Œ
     clawer.config('http://www.douban.com/search?q=Evangelion',
             tagPropREs([['a', 'href'], ['img', 'src']])).then(function() {
                 clawer.run(5).then(function(results) {
@@ -96,7 +96,7 @@
             clawer.moveon();
         })
     }
-    //µÚÒ»ÂÖ»ñÈ¡×ÊÔ´Íê±Ïºó£¬É¸Ñ¡url£¬½øĞĞµÚ¶şÂÖ×ÊÔ´»ñÈ¡
+    //ç¬¬ä¸€è½®è·å–èµ„æºå®Œæ¯•åï¼Œç­›é€‰urlï¼Œè¿›è¡Œç¬¬äºŒè½®èµ„æºè·å–
     function steptwo() {
 /*        var _result = turnResults[0]['http://www.douban.com/search?q=Evangelion'].a;
         _result = _result.slice(41, 66);
