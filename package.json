@@ -11,13 +11,13 @@
   "dependencies": {},
   "devDependencies": {
     "mocha": "~1.21.x",
-    "should": "~4.0.0",
+    "should": "~4.0.0"
   },
   "repository": {
     "type": "git",
     "url": "https://github.com/mountainmoon/bolero.git"
   },
-  "main": "./lib/bolero.js",
+  "main": "./lib/crawler.js",
   "licenses": [
     {
       "type": "MIT",
