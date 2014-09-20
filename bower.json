@@ -1,0 +1,16 @@
+{
+  "name": "bolero",
+  "main": "[bolero.js, tentacle.js]",
+  "version": "0.1.0",
+  "ignore": [
+    "lib",
+    "support",
+    "test",
+    ".gitignore",
+    ".npmignore",
+    "_bolero.js",
+    "Makefile",
+    "package.json",
+    "README.md"
+  ]
+}
