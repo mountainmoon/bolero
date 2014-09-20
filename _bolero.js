@@ -46,7 +46,7 @@ require.relative = function (parent) {
     };
 
 
-require.register("clawer.js", function(exports, require, module){
+require.register("crawler.js", function(exports, require, module){
 
 var fetcher = require('fetcher'),
     merge = require('utils').merge,
@@ -272,7 +272,7 @@ exports = module.exports = {
 
 exports.getPrivate = function(name) {return eval(name)}
 
-}); // module: clawer.js
+}); // module: crawler.js
 
 require.register("dataStorage.js", function(exports, require, module){
 

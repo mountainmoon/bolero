@@ -71,29 +71,29 @@
 <script>
     var finalResult;
     var turnResults = [];
-    var clawer = require('clawer');
+    var crawler = require('crawler');
     var tagPropREs= require('parser').tagPropREs;
     var turn = 1;
 
     //监听turn，每轮结束后暂停，对获取的url进行筛选再继续fetch
-    clawer.on('turn', function(results) {
+    crawler.on('turn', function(results) {
         turnResults.push(results);
-        clawer.pause();
+        crawler.pause();
         console.log('pause, turn:', turn++);
     });
 
     //设置目标，
-    clawer.config('http://www.douban.com/search?q=Evangelion',
+    crawler.config('http://www.douban.com/search?q=Evangelion',
             tagPropREs([['a', 'href'], ['img', 'src']])).then(function() {
-                clawer.run(5).then(function(results) {
+                crawler.run(5).then(function(results) {
                     finalResult = results;
                     console.log(results);
                 })
             });
 
     function configAndMoveon(url) {
-        clawer.config(url).then(function() {
-            clawer.moveon();
+        crawler.config(url).then(function() {
+            crawler.moveon();
         })
     }
     //第一轮获取资源完毕后，筛选url，进行第二轮资源获取
