@@ -65,7 +65,7 @@ window.addEventListener('message', function(event) {
             result: result,
             type: typeof result == 'string' && type != 'img' ? 'redirect' : type,
             targetId: data.targetId
-        }, event.origin)
+        }, event.origin === 'null' ? '*' : event.origin)
     })
 })
 
