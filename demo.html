@@ -80,10 +80,17 @@
     crawler.on('turn', function(results) {
         turnResults.push(results);
         crawler.pause();
-        console.log('pause, turn:', turn++);
+        console.info('pause, turn:', turn++);
+        if (turn == 2) {
+            console.info('call steptwo() to continue fetching')
+        } else if (turn == 3) {
+            console.info('results');
+            console.info(results);
+        }
     });
 
     //设置目标，
+    console.info('set init url to fetch.');
     crawler.config('http://www.douban.com/search?q=Evangelion',
             tagPropREs([['a', 'href'], ['img', 'src']])).then(function() {
                 crawler.run(5).then(function(results) {
@@ -93,7 +100,14 @@
             });
 
     function configAndMoveon(url) {
-        crawler.config(url).then(function() {
+        crawler.config(function() {
+            console.info('simulate filtering the fetching url through remote service.');
+            return new Promise(function(res) {
+                setTimeout(function() {
+                    res(url);
+                },2000);
+            })
+        }).then(function() {
             crawler.moveon();
         })
     }
