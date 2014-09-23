@@ -14,6 +14,9 @@ if (top === window)
 var REGEXP_RE = /^\/.+\/(?!.*([img]).*\1.*$)[img]{0,3}$/,
     FUNCTION_RE = /^function\s*?\([\s\S]*?\)\s*?\{[\s\S]*?}\s*$/,
     URL_ARGUMENT_RE = /=(https?%3A%2F%2F.+?)(&|$)/,
+    IMAGE_TYPE_RE = /^.+\.(\w+)$/,
+    IMAGE_TYPES = ['jpg', 'jpeg', 'png'],
+
     slice = Array.prototype.slice,
     fetchTypes = ['img', 'str', 'dom'];
 
@@ -92,7 +95,38 @@ function handleDOM(pattern) {
 }
 
 function handleImage() {
+    var canvas = document.createElement('canvas'),
+        ctx = canvas.getContext('2d'),
+        img = new Image(),
+        type;
 
+    if (IMAGE_TYPE_RE.test(location.href)) {
+        type = RegExp.$1;
+        if (~IMAGE_TYPES.indexOf(type)) {
+            if (type == 'jpg')
+                type = 'jpeg';
+            type = 'image/' + type;
+        } else {
+            type = 'image/jpeg';
+        }
+    }
+
+    return new Promise(function(res, rej) {
+        img.onload = function() {
+            res(getDataUrl())
+        };
+        img.onerror = function() {
+            rej(Error(img.src + ' load failed'));
+        };
+        img.src = location.href;
+    });
+
+    function getDataUrl() {
+        canvas.width = img.naturalWidth;
+        canvas.height = img.naturalHeight;
+        ctx.drawImage(img, 0, 0);
+        return canvas.toDataURL(type);
+    }
 }
 
 /**
