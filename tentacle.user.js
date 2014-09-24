@@ -237,6 +237,7 @@ function getPage(url) {
                     if (URL_ARGUMENT_RE.test(url)) {
                         res({redirect: decodeURIComponent(RegExp.$1)});
                     } else {
+                        log('fetch failed', url);
                         res('');
                     }
                 }

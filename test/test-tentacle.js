@@ -92,7 +92,8 @@ describe("test tentacle", function() {
             });
             it("should receive a message from the created frame", function() {
                 return new Promise(function(res) {
-                    window.addEventListener('message', function(event) {
+                    window.addEventListener('message', function fn(event) {
+                        window.removeEventListener('message', fn);
                         var data = event.data;
                         if (data.type == 'frame') {
                             data.fetchType.should.equal('pi');
@@ -116,16 +117,47 @@ describe("test tentacle", function() {
                     ]]
                 }, '*');
                 return new Promise(function(res) {
-                    window.addEventListener('message', function(event) {
+                    window.addEventListener('message', function fn(event) {
+                        window.removeEventListener('message', fn);
                         var data = event.data;
                         if (data.targetId) {
                             data.should.eql({
                                 url: testUrl,
-                                result: {a: ['invalid.html']},
+                                result: {a: ['hehe.html', 'invalid.html']},
                                 type: 'str',
                                 targetId: 1
                             });
                             res();
+                        }
+                    })
+                })
+            });
+        });
+
+        describe("image fetch", function(){
+            before(function(done) {
+                frame.src="../image/ok.png";
+                window.addEventListener('message', function fn(event) {
+                    window.removeEventListener('message', fn);
+                    if (event.data.type == 'frame')
+                        done()
+                })
+            });
+            it("should receive a data url contained in the postMessage data", function(){
+                this.timeout(5000);
+                frame.contentWindow.postMessage({
+                    type: 'img',
+                    targetId: 1
+                }, '*');
+                return new Promise(function(res) {
+                    window.addEventListener('message', function fn(event) {
+                        window.removeEventListener('message', fn);
+                        var data = event.data;
+                        if (data.targetId && data.type == 'img') {
+                            data.should.have.properties('url', 'targetId', 'result', 'type');
+                            data.result.should.startWith('data');
+                            console.log(data.result);
+                            res(data.result);
                         }
                     })
                 })
