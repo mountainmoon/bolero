@@ -8,7 +8,9 @@
 // @copyright 2014+, God-like
 // ==/UserScript==
 
-if (top === window)
+(function() {
+
+if (top === window && !~location.search.indexOf('tentacle=top'))
     return;
 
 var REGEXP_RE = /^\/.+\/(?!.*([img]).*\1.*$)[img]{0,3}$/,
@@ -23,7 +25,9 @@ var REGEXP_RE = /^\/.+\/(?!.*([img]).*\1.*$)[img]{0,3}$/,
 var _log = console.log, log;
 console.log = function() {
     var args;
-    if (arguments[0] != 'tentacle') {return}
+    if (arguments[0] != 'tentacle') {
+        return
+    }
     args = slice.call(arguments, 1);
     args.unshift('##LOG##: frame, ' + location.origin + ': ');
     _log.apply(console, args)
@@ -52,15 +56,20 @@ window.addEventListener('message', function(event) {
         type = data.type,
         promise;
 
-    if (!fetchTypes.some(function(_type) {return _type == type}) || !checkAuth(data.auth))
+    if (!fetchTypes.some(function(_type) {
+        return _type == type
+    }) || !checkAuth(data.auth))
         return;
     switch (type) {
         case 'img':
-            promise = handleImage(); break;
+            promise = handleImage();
+            break;
         case 'str':
-            promise = handlePage(url, data.pattern); break;
+            promise = handlePage(url, data.pattern);
+            break;
         case 'dom':
-            promise = handleDOM(data.pattern); break;
+            promise = handleDOM(data.pattern);
+            break;
     }
     promise.then(function(result) {
         event.source.postMessage({
@@ -84,7 +93,7 @@ function handlePage(url, pattern) {
     return getPage(url).then(function(html) {
         isRedirect = typeof html == 'object';
         return isRedirect ? html : parseDoc(pattern, html);
-    //parseDoc returns a promise, so the merge callback would be fired till the promise resolved
+        //parseDoc returns a promise, so the merge callback would be fired till the promise resolved
     }).then(function(results) {
         return isRedirect ? results.redirect : merge(results);
     })
@@ -182,7 +191,7 @@ function merge(results) {
     results && results.forEach(function(cur) {
         var key, type;
         if (cur) {
-            for(key in cur) {
+            for (key in cur) {
                 if (!ret[key])
                     ret[key] = [];
                 //if use push.apply, the actual length may exceed the limit of arguments' length
@@ -197,7 +206,7 @@ function merge(results) {
 
     for (var key in ret) {
         var values = ret[key].sort(), prev;
-        for(var i = 0; i < values.length; i++) {
+        for (var i = 0; i < values.length; i++) {
             var cur = values[i];
             if (!cur || prev == cur) values.splice(i--, 1);
             else prev = cur;
@@ -232,15 +241,17 @@ function getPage(url) {
                     }
                 }
                 /*if ((xhr.status >= 200 && xhr.status < 300) || xhr.status == 304) {
-                    res(xhr.response)
-                } else {
-                    log('fetch failed', url);
-                    log(xhr);
-                    rej(xhr);
-                }*/
+                 res(xhr.response)
+                 } else {
+                 log('fetch failed', url);
+                 log(xhr);
+                 rej(xhr);
+                 }*/
             }
         };
         xhr.open('GET', url);
         xhr.send()
     })
 }
+
+})();
