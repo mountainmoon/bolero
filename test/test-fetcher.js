@@ -176,6 +176,15 @@ describe("test fetcher", function() {
                 })
         })
     });
+
+    describe("#getDataUrl", function() {
+        var src = 'http://127.0.0.1:63342/bolero/image/ok.png';
+        it("should return a data url as the fetched image", function() {
+            return fetcher.getDataUrl(src).then(function(data) {
+                data[src].dataUrl.should.startWith('data:');
+            })
+        });
+    });
     
     describe("#onProgress", function() {
         var url1 = 'http://127.0.0.1:63342/bolero/test/beFetchedPage.html',
@@ -183,8 +192,8 @@ describe("test fetcher", function() {
 
         it("should receive results progressively if fetch multiple resources", function(done) {
             var results = {};
-            fetcher.onProgress(function(result, _results) {
-                results[result.url] = result.result;
+            fetcher.onProgress(function(url, result, _results) {
+                results[url] = result;
                 if (Object.keys(results).length == 2) {
                     results.should.eql(_results);
                     done();
@@ -193,7 +202,7 @@ describe("test fetcher", function() {
 
             //MIN_INTERVAL_PER_ORIGIN = 2500 : iframeFetcher.js
             //it is abnormal if finishes in less than 2500ms,
-            this.timeout(3000);
+            this.timeout(6000);
             return fetcher.fetch([url1, url2],
                 [
                     [

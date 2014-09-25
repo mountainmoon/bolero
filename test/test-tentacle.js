@@ -48,7 +48,7 @@ describe("test tentacle", function() {
             return getPage(testUrl).then(function(_doc) {
                 doc = _doc;
             })
-        })
+        });
 
         describe("parseDoc", function() {
             it("should take arguments like this: ([[regexp,{key:index}],..], docString), and return an Array", function() {
@@ -155,7 +155,7 @@ describe("test tentacle", function() {
                         var data = event.data;
                         if (data.targetId && data.type == 'img') {
                             data.should.have.properties('url', 'targetId', 'result', 'type');
-                            data.result.should.startWith('data');
+                            data.result.dataUrl.should.startWith('data');
                             console.log(data.result);
                             res(data.result);
                         }

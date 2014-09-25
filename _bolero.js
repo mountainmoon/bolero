@@ -606,7 +606,7 @@ function removeAllProgresses() {
  * @param {Object} setting - {type:false,allow-scripts:false,page:false, repeat}
  *  type: 'str', 'img', 'dom' 表示使用dom来渲染,一般当第2个参数为函数，并且其doc需要是DOM时使用；若pattern为css选择器，则DOM自动true
  *  repeat: true,允许返回的资源可以重复，默认为false(undefined)
- *  fixKeys: [key1, key2,..]
+ *  fixKeys: [key1, key2,..] key is the resource name in the result
  *  allow-scripts:允许页面可执行脚本；页面执行的脚本大多包含界面初始化脚本，能更好的还原实际页面
  *  page:表示是否获取页面本身，页面本身较大，是否有必要获取呢？默认不获取
  */
@@ -636,7 +636,7 @@ function fetch(url, pattern, setting) {
                     });
 
                 results[data.url] = result;
-                eventEmitter.emit('progress', result, results);
+                eventEmitter.emit('progress', data.url, result, results);
                 if (!--length) {
                     res(results)
                 }
@@ -651,7 +651,7 @@ function fetch(url, pattern, setting) {
  * @returns {*}
  */
 function getDataUrl(src) {
-    return fetch(src, {type: 'img'})
+    return fetch(src, null, {type: 'img'})
 }
 
 /**
@@ -777,6 +777,7 @@ var frames = {},
     uid = 1,
     container = document.createElement('div'),
     fetchTypes = ['img', 'dom', 'str'],
+    MSG_TYPES = fetchTypes.concat('frame'),
     // holds the fetching task
     fetchPending = [],
     busyOrigin = {},
@@ -854,26 +855,6 @@ eventEmitter.on('str', function(targetId, url, result) {
         // fetch again
         fetchCallback(targetId, url, getOrigin(url), result, 'redirect');
     });
-
-function reset() {
-    container.innerHTML = '';
-    fetchPending.length = 0;
-    busyOrigin = {};
-    uid = 1;
-    concurrence = 0;
-    timer.forEach(function(t) {
-        clearTimeout(t);
-    });
-    timer.length = 0;
-    fetchTypes.forEach(function(key) {
-        frames[key] = {
-            work: {},
-            pending: [],
-            creating: {},
-            maxLength: 3
-        }
-    });
-}
 
 function fetchCallback(targetId, targetUrl, frameUrl, result, type) {
     var frameType = type == 'redirect' ? 'str' : type,
@@ -967,22 +948,37 @@ function redirectFetch(res, oldUrl, newUrl) {
             data = event.data,
             args;
         if (!eventName || !checkAuth(data.auth)) {return}
-        switch (eventName) {
-            case 'frame':
-                args = [data.fetchType, data.url, event.source]; break;
-            case 'str':
-            case 'dom':
-            case 'redirect':
-                args = [data.targetId, data.url, data.result]; break;
-            case 'img':
-                args = [data.url, data.result]; break;
-            default :
-                throw Error('throw me one day')
-        }
-        args.unshift(eventName);
+        if (!~MSG_TYPES.indexOf(eventName))
+            throw Error('no such msg type: ' + eventName);
+        args = eventName == 'frame' ?
+            [eventName, data.fetchType, data.url, event.source] :
+            [eventName, data.targetId, data.url, data.result];
         eventEmitter.emit.apply(eventEmitter, args)
     })
-}())
+}());
+
+/**
+ * reset the iframe Fetcher
+ */
+function reset() {
+    container.innerHTML = '';
+    fetchPending.length = 0;
+    busyOrigin = {};
+    uid = 1;
+    concurrence = 0;
+    timer.forEach(function(t) {
+        clearTimeout(t);
+    });
+    timer.length = 0;
+    fetchTypes.forEach(function(key) {
+        frames[key] = {
+            work: {},
+            pending: [],
+            creating: {},
+            maxLength: 3
+        }
+    });
+}
 
 function checkAuth(auth) {
     //TODO: let it be true for now
@@ -1167,7 +1163,7 @@ function tryFetch(win, type, url, pattern, targetId) {
     if (type == 'str')
         msg.url = url;
     for (var key in msg) {
-        if (!key)
+        if (!msg[key] && msg[key] !== 0)
             delete msg[key];
     }
     // skip control if type is img. If there is a window, just fetch the image

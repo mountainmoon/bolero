@@ -36,10 +36,6 @@ describe("test iframeFetcher", function() {
                 Should(typeof win[0].postMessage == 'function').be.ok;
             })
         });
-
-        after(function() {
-            iframeFetcher.reset();
-        })
     });
 
     describe("[cleanFrameQueue]", function() {
@@ -105,9 +101,7 @@ describe("test iframeFetcher", function() {
             container = getPrivate('container'),
             origin1 = 'http://127.0.0.1:63342',
             origin2 = 'http://localhost:63342';
-        before(function() {
-            iframeFetcher.reset();
-        })
+
         it("should create an ifame when the condition is ok", function() {
             var resolve1, resolve2;
             var p1 = (new Promise(function(res) {
@@ -135,18 +129,17 @@ describe("test iframeFetcher", function() {
                 container.childElementCount.should.equal(2)
             });
         })
-        after(function() {
-            iframeFetcher.reset();
-        })
     })
 
     describe("#fetch", function() {
         var url = 'http://localhost:63342/bolero/test/beFetchedPage.html',
             elapse;
 
+        before(function() {
+            iframeFetcher.reset();
+        });
+
         it("should take a target argument and return a promise which would be resolved with the fetched result", function() {
-            var frames = getPrivate('frames'),
-                busyOrigin = getPrivate('busyOrigin');
             return iframeFetcher.fetch({
                 url: url,
                 pattern: [
@@ -175,12 +168,10 @@ describe("test iframeFetcher", function() {
         })
 
         it("should return the result like fetch a new resource if fetch the same resource again", function() {
-            var frames = getPrivate('frames'),
-                busyOrigin = getPrivate('busyOrigin'),
-                MIN_INTERVAL_PER_ORIGIN = getPrivate('MIN_INTERVAL_PER_ORIGIN'),
+            var MIN_INTERVAL_PER_ORIGIN = getPrivate('MIN_INTERVAL_PER_ORIGIN'),
                 now = Date.now();
             // same origin requests would be constrained to ex. in 2.5s per request.
-            this.timeout(3000);
+            this.timeout(30000);
             return iframeFetcher.fetch({
                 url: url,
                 pattern: [
@@ -196,6 +187,17 @@ describe("test iframeFetcher", function() {
                     result: {a: ['hehe.html', 'invalid.html']}
                 });
                 (Date.now() - now).should.be.greaterThan(MIN_INTERVAL_PER_ORIGIN);
+            })
+        });
+
+        it("should return a dataUrl if fetch a valid image", function() {
+            iframeFetcher.reset();
+            return iframeFetcher.fetch({
+                url: 'http://127.0.0.1:63342/bolero/image/ok.png',
+                setting: {type: 'img'}
+            }).then(function(data) {
+                data.should.have.properties('url', 'result');
+                data.result.dataUrl.should.startWith('data:');
             })
         });
 

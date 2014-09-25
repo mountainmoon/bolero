@@ -134,7 +134,7 @@ function handleImage() {
         canvas.width = img.naturalWidth;
         canvas.height = img.naturalHeight;
         ctx.drawImage(img, 0, 0);
-        return canvas.toDataURL(type);
+        return {dataUrl: canvas.toDataURL(type)}
     }
 }
 
