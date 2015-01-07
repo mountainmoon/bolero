@@ -1,3 +1,7 @@
+// for browser test
+if (typeof require == 'undefined')
+  require = window.bolero.require
+
 describe("extractor", function() {
   var extractorId = 'extractor'
     , prefix = '../lib/'

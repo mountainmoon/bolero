@@ -3,7 +3,7 @@ RAW = $(shell find lib -maxdepth 1 -name "*.js" -type f) lib/adapters/browser-ad
 
 all: bolero.js
 
-bolero.js: $(RAW)
+bolero.js: $(RAW) support/compile.js
 	@node support/compile $(RAW)
 
 clean:

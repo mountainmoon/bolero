@@ -1,3 +1,7 @@
+// for browser test
+if (typeof require == 'undefined')
+  require = window.bolero.require
+
 describe("util", function() {
   var util = require('util')
   describe(".getOrigin", function() {

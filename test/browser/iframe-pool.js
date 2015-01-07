@@ -1,3 +1,7 @@
+// for browser test
+if (typeof require == 'undefined')
+  require = window.bolero.require
+
 describe("iframePool", function() {
   var pool = require('iframe-pool')
   var util = require('util')

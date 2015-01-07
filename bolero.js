@@ -1,3 +1,4 @@
+;(function(){
 
 // CommonJS require()
 
@@ -982,3 +983,6 @@ function fetch(url, callback) {
   })
 }
 }); // module: adapters/browser-adapter.js
+
+window.bolero = { Crawler: require("crawler"), extractor: require("extractor"), util: require("util"), require: require}
+})(window);

@@ -23,9 +23,13 @@ function test(name){
       extractorId = prefix + extractorId
     }
 
-    var Crawler = require(crawlerId),
-      linkExt = require(extractorId).linkExtractor,
-      testUrl = 'http://localhost:9999/fetch-test.html'
+    // for browser test
+    if (typeof require == 'undefined')
+      require = window.bolero.require
+
+    var Crawler = require(crawlerId)
+      , linkExt = require(extractorId).linkExtractor
+      , testUrl = 'http://localhost:9999/fetch-test.html'
 
     before(function() {
       Crawler.default({
@@ -38,7 +42,7 @@ function test(name){
     if (name == 'node2browser-adapter') this.timeout(3000)
 
     describe(".run()", function(){
-      it("should start crawling and return the crawler", function(done) {
+      it("should start crawling and return the crawler it-self", function(done) {
         new Crawler({url: testUrl}).run().on('drain', function(results) {
           results[0].should.match({
             url: testUrl,
@@ -51,7 +55,7 @@ function test(name){
     })
 
     describe(".queue()", function() {
-      it("should fetch the url added by .queue when .run is invoked", function(done) {
+      it("should add a url which would be fetched later to the crawler", function(done) {
         var urls = [
           testUrl + '?foo=1',
           testUrl + '?foo=2',
@@ -68,7 +72,7 @@ function test(name){
     })
 
     describe(".pause()", function() {
-      it("should stop crawling if .pause is called, and resume when .run is called", function(done) {
+      it("should stop the crawler, and resume it when .run is called", function(done) {
         this.timeout(2500);
         var crawler = new Crawler({
           url: testUrl + '?delay=1000'
@@ -85,7 +89,7 @@ function test(name){
         })
       })
 
-      it("should stop crawling if .pause is called after a just finished task", function(done) {
+      it("should stop the crawler at once if it is called after a just finished task", function(done) {
         var now, span = 1000
         var crawler = new Crawler({
           url: [testUrl + '?foo=4', testUrl + '?foo=5']
@@ -131,7 +135,7 @@ function test(name){
 
     if (!isBrowser) return
     describe("callback.domCallback", function() {
-      it("should pass back the result which handled by domCallback in the fetching window", function(done) {
+      it("should be passed to the fetching window, and handle the DOM to get a result which will be passed back", function(done) {
         var callback = function(html, response) {
           return response.domResult
         }

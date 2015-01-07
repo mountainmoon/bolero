@@ -161,9 +161,9 @@
         };
 
         var Crawler = bolero.Crawler
-        var absUrl = bolero.absUrl
-        var linkExt = bolero.linkExt
-        var imgExt = bolero.attrExt('img', 'src')
+        var absUrl = bolero.util.absUrl
+        var linkExt = bolero.extractor.linkExtractor
+        var imgExt = bolero.extractor.attrExtractor('img', 'src')
         var crawler = new Crawler({
             callback: function(html, response) {
                 var link = linkExt(html);
@@ -196,13 +196,8 @@
             return Object.keys(obj)
         }
 
-    }).factory('bolero', function() {
-        return {
-            Crawler: require('crawler'),
-            linkExt: require('extractor').linkExtractor,
-            attrExt: require('extractor').attrExtractor,
-            absUrl: require('util').absUrl
-        };
+    }).factory('bolero', function($window) {
+        return $window.bolero
     }).filter('linkFilter', function() {
       return function(array, re) {
         if (!array || !re) return array

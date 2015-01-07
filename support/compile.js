@@ -29,7 +29,15 @@ args.forEach(function(file){
 
 function compile() {
     var buf = ''
-        , outFile = 'bolero.js';
+      , outFile = 'bolero.js'
+      , head = ';(function(){\n'
+      , tail = '\nwindow.bolero = {' +
+        ' Crawler: require("crawler"),' +
+        ' extractor: require("extractor"),' +
+        ' util: require("util"),' +
+        ' require: require' +
+        '}\n'
+      , foot = '})(window);'
 
     buf += '\n// CommonJS require()\n\n';
     buf += browser.require + '\n\n';
@@ -45,6 +53,7 @@ function compile() {
         buf += js;
         buf += '\n}); // module: ' + file + '\n';
     });
+    buf = head + buf + tail + foot;
     fs.writeFile(outFile, buf, function(err){
         if (err) throw err;
     });
