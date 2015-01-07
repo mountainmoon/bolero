@@ -1,4 +1,4 @@
-socketio-wildcard
+bolero
 =================
 
 [![Build Status](https://travis-ci.org/mountainmoon/bolero.svg)](https://travis-ci.org/mountainmoon/bolero)
