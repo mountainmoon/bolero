@@ -29,7 +29,7 @@
     "should": "^4.0.0"
   },
   "scripts": {
-    "test-node": "mocha --require should --reporter spec -g node-adapter ./test/*.js",
+    "test": "mocha --require should --reporter spec -g node-adapter ./test/*.js",
     "test-node2browser": "mocha --require should --reporter spec -g node2browser ./test/crawler.js",
     "test-browser-server": "node support/test-browser.js",
     "test-browser-run": "karma run"
