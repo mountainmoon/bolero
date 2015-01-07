@@ -3,15 +3,36 @@
   "version": "0.1.0",
   "description": "a web crawler for browsers(and maybe for Node in future)",
   "homepage": "https://github.com/mountainmoon/bolero",
-  "keywords": ["crawler", "browser", "robot", "spider"],
-  "author": "KC YUE <yuekec@gmail.com>",
+  "keywords": [
+    "crawler",
+    "browser",
+    "robot",
+    "spider"
+  ],
+  "author": "Kecheng Yue <yuekec@gmail.com>",
   "engines": {
-    "node": ">= 0.6.0"
+    "node": ">= 0.10.0"
   },
-  "dependencies": {},
+  "dependencies": {
+    "crawler": "~0.4.1",
+    "socket.io": "^1.2.1",
+    "socket.io-client": "^1.2.1"
+  },
   "devDependencies": {
-    "mocha": "~1.21.x",
-    "should": "~4.0.0"
+    "express": "^4.0.0",
+    "karma": "^0.12.30",
+    "karma-cli": "0.0.4",
+    "karma-chrome-launcher": "^0.1.7",
+    "karma-firefox-launcher": "^0.1.4",
+    "karma-mocha": "^0.1.10",
+    "mocha": "^2.0.0",
+    "should": "^4.0.0"
+  },
+  "scripts": {
+    "test-node": "mocha --require should --reporter spec -g node-adapter ./test/*.js",
+    "test-node2browser": "mocha --require should --reporter spec -g node2browser ./test/crawler.js",
+    "test-browser-server": "node support/test-browser.js",
+    "test-browser-run": "karma run"
   },
   "repository": {
     "type": "git",

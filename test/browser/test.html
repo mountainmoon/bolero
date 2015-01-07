@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>Mocha</title>
+    <link rel="stylesheet" href="../../bower_components/mocha/mocha.css">
+</head>
+<body>
+<div id="mocha"></div>
+<script src="../../bower_components/mocha/mocha.js"></script>
+<script src="../../bower_components/should/should.js"></script>
+<script>mocha.setup('bdd')</script>
+<script src="../../bolero.js"></script>
+<!--<script src="../tentacle.user.js"></script>-->
+<!--<script src="test-utils.js"></script>
+<script src="test-parser.js"></script>-->
+<!--<script src="test-clawer.js"></script>-->
+<!-- the two should be commented when test tentacle -->
+<!--<script src="test-fetcher.js"></script>
+<script src="test-iframeFetcher.js"></script>-->
+<!-- it should be commented when test the two above -->
+<!--<script src="test-tentacle.js"></script>-->
+<!--<script src="test-before-behavior.js"></script>-->
+<script src="../extractor.js"></script>
+<script src="util.js"></script>
+<script src="iframe-pool.js"></script>
+<script src="../crawler.js"></script>
+<script>
+    mocha.run();
+</script>
+</body>
+</html>

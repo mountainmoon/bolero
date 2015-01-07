@@ -1,4 +1,4 @@
-//copied from mocha with some modifying 
+//modified based on mocha's compile file
 /**
  * Module dependencies.
  */
@@ -9,8 +9,7 @@ var fs = require('fs');
  * Arguments.
  */
 
-var isTest = process.argv[2] == '-t'
-    , args = process.argv.slice(isTest ? 3 : 2)
+var args = process.argv.slice(2)
     , pending = args.length
     , files = {};
 
@@ -30,8 +29,7 @@ args.forEach(function(file){
 
 function compile() {
     var buf = ''
-        , test = isTest ? '\nexports.getPrivate = function(name) {return eval(name)}\n' : ''
-        , outFile = (isTest ? '_' : '') + 'bolero.js';
+        , outFile = 'bolero.js';
 
     buf += '\n// CommonJS require()\n\n';
     buf += browser.require + '\n\n';
@@ -42,9 +40,9 @@ function compile() {
     args.forEach(function(file){
         var js = files[file];
         file = file.replace('lib/', '');
-        buf += '\nrequire.register("' + file + '", function(exports, require, module){\n';
+        js = js.replace('BOLERO_MODE', 'browser').replace('BOLERO_CRAWLERS', 'adapters/browser-adapter.js')
+        buf += '\n\nrequire.register("' + file + '", function(exports, require, module){\n';
         buf += js;
-        buf += test; 
         buf += '\n}); // module: ' + file + '\n';
     });
     fs.writeFile(outFile, buf, function(err){

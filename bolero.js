@@ -46,309 +46,166 @@ require.relative = function (parent) {
     };
 
 
+
+require.register("adapter-factory.js", function(exports, require, module){
+//UPPERCASE strings will be replaced if compiled for browser
+exports.mode = 'browser' == 'browser' ? 'browser' : 'node'
+
+var constructors = {}
+  , files
+
+if (exports.mode == 'node') {
+  var fs = require('fs')
+    , path = require('path')
+
+  files = fs.readdirSync(path.join(__dirname, 'adapters'))
+} else {
+  files = ['adapters/browser-adapter.js']
+}
+
+files.forEach(function(file) {
+  var name = file.replace('.js', '')
+  constructors[name] = name
+})
+
+exports.getAdapter = function(name) {
+  var type = typeof constructors[name], ctor
+
+  if (type == 'string') {
+    ctor = constructors[name] = require('./adapters/' + name)
+  } else if (type == 'function') {
+    ctor = constructors[name]
+  } else if (type == 'undefined') {
+    ctor = defaultAdapter
+  } else {
+    throw Error('No such adapter:' + name)
+  }
+  // arg `name` takes no effect. Use Function.prototype.bind ？
+  return new (ctor.bind.apply(ctor, arguments))
+}
+// pre-call  TODO: conflicts browser and node
+var defaultAdapter = require('./adapters/' + (exports.mode == 'node' ?
+  'node-adapter' : 'browser-adapter'))
+
+}); // module: adapter-factory.js
+
+
 require.register("crawler.js", function(exports, require, module){
+var EventEmitter = require('events').EventEmitter
+var adapterFactory = require('./adapter-factory')
+var util = require('./util')
 
-var fetcher = require('fetcher'),
-    merge = require('utils').merge,
-    paused = false,
-    stopped = false,
-    eventEmitter = new (require('event').EventEmitter),
-    allResults = {},
-    results, target, turn;
+module.exports = Crawler
 
-function reset() {
-    paused = stopped = false;
-    eventEmitter.removeAllListeners();
-    allResults = {};
-    results = undefined;
+var slice = Array.prototype.slice
+var push = Array.prototype.push
+
+var defaultCallback = function() {}
+var interval
+var adapterName
+
+function Crawler(option) {
+  var type = typeof option
+    , _interval = option && option.interval || interval
+    , name = option && option.name || adapterName
+    , url
+
+  this.results = []
+  this.length = 0
+  this.status = 'pending'
+
+  if (option && type == 'object') {
+    url = option.url || []
+    url = util.isArrayLike(url) ? url : [url]
+
+    if (option.progress) this.on('progress', option.progress)
+    if (option.drain) this.on('drain', option.drain)
+  } else if (type != 'undefined') {
+    throw TypeError('argument option should either be an Object or undefined')
+  }
+
+  option = option || {}
+  // create an adapter to do specific crawling work
+  // the 2nd argument `this` should be deemed as an array
+  adapterFactory.getAdapter(name, this, wrapper(this),
+    option.callback || defaultCallback, _interval, option.timeout)
+
+  // so the `length` will be changed
+  url && push.apply(this, url)
+
+  // todo: report inside error in this way, For Now
+  this.on('progress', function(err) {
+    if (err instanceof Error) console.error(err.stack);
+  })
 }
 
-/**
- * 启动爬虫, 根据config设定的参数来运行爬虫， 若没有设定参数，则根据前一次搜索的链接结果来继续爬行
- * @param _turn - 表示根据返回的link来进行广度查询的层数; 指定为-1效果似乎会很不错
- * @param filter - 见`config`
- * @returns {Promise}
- */
-function run(_turn, filter) {
-    turn = typeof _turn === 'undefined' ? 1 : _turn;
-    _filter = filter || _filter;
-    //results = [];
-    return new Promise(function(res, rej) {
-        if (!target) {
-            target = [getUrl().url];
-            if (!target.length) {
-                rej(Error('no target url'));
-                return;
-            }
-        }
-        (function fetch() {
-            if (!turn--) {
-                res(allResults);
-                return;
-            }
-            fetcher.fetch.apply(null, target).then(function(_results) {
-                // TODO: 存储获取的结果, 设置url以及可能的其他操作
-                merge(allResults, results = _results);
-                if (turn) {
-                    var url = getUrl().a;
-                    // prevent from looping
-                    for (var i = 0; i < url.length; i++)
-                        if (allResults[url[i]])
-                            url.splice(i--, 1);
-                    _filter && (url = _filter(url));
-                    if (!url || !url.length)
-                        turn = 0;
-                    _config(url, _pattern, _setting);
-                }
-
-                /**
-                 * triggered after each turn but not including last turn.
-                 * If pause in the turn listener, and use config promise,
-                 * may be could do sth awesome.
-                 * @event turn
-                 * @data results
-                 */
-                turn && eventEmitter.emit('turn', results);
-                if (paused) {
-                    paused = false;
-                    eventEmitter.emit('paused');
-                    eventEmitter.once('moveon', function() {
-                        fetch();
-                    })
-                } else if (stopped) {
-                    stopped = false;
-                    turn = 0;
-                    eventEmitter.emit('stopped');
-                    res(allResults);
-                } else {
-                    fetch();
-                }
-            });
-            // empty target, for fetching again based on the fetched results, if turn is not 1.
-        })()
-    })
+function wrapper(self) {
+  return {
+    emitDrain: function() {
+      var args = slice.call(arguments)
+      args.unshift('drain')
+      self.status = 'drain'
+      self.emit.apply(self, args)
+    },
+    emitProgress: function(result) {
+      var args = slice.call(arguments)
+      args.unshift('progress')
+      self.results.push(result)
+      self.emit.apply(self, args)
+    },
+    // listen events: `run` and `pause`
+    on: self.on.bind(self)
+  }
 }
 
-function moveon() {
-    if (!turn) return;
-    //如果movieon需要调整target，就使用config，config可能是异步的
-    eventEmitter.emit('moveon')
+Crawler.mode = adapterFactory.mode
+
+Crawler.prototype = Object.create(EventEmitter.prototype, {
+  constructor: {
+    value: Crawler,
+    enumerable: false,
+    writable: true
+  }
+})
+
+Crawler.prototype.run = function() {
+  this.status = 'running'
+  this.emit('run')
+  return this
 }
 
-function pause() {
-    paused = true;
-    stopped = false;
-    return new Promise(function(res) {
-        eventEmitter.once('paused', function() {
-            res(results);
-        })
-    })
+Crawler.prototype.queue = function(url) {
+  if (url) {
+    url = util.isArrayLike(url) ? url : [url]
+    push.apply(this, url)
+  }
+  return this
 }
 
-function stop() {
-    paused = false;
-    stopped = true;
-    return new Promise(function(res) {
-        eventEmitter.once('stopped', function() {
-            res(results);
-        })
-    })
+Crawler.prototype.pause = function() {
+  this.status = 'pausing'
+  this.emit('pause')
+  return this
 }
 
-var _pattern, _setting, _filter;
+Crawler.prototype.splice = Array.prototype.splice
+Crawler.prototype.shift = Array.prototype.shift
 
-/**
- * run之前调用，用以设置要访问的页面，从该页面上要获取的资源模式，以及用何种方式获取页面的设置
- * @param {string | [string, Object] | Function} url
- *  [Object]: {url: url, pattern: pattern, setting: setting} 单独为某个url设置参数，若pattern等为空则按照其余参数的设置
- *  Function: 见`可能的参数组合`4,5
- *
- * @param {string | RegExp | Function=} pattern - the pattern for the wanted targets
- *  string: either a target contained string OR a RegExp literal string.
- *  RegExp: Need Not explain
- *  function: function(doc,[]){exports = module.exports = {links:[], imgs:[], object:{..}}}；doc即可能是文档字符串，也可能是docDOM。视config而定
- *
- * @param {Object=} setting - {type:'str'|'img'|'dom',allow-scripts:true}
- *  type:默认为str，表示是否要使用dom来渲染,一般当第2个参数为函数，并且其doc需要是DOM时使用；若pattern为css选择器，则DOM自动true
- *  allow-scripts:允许页面可执行脚本；页面执行的脚本大多包含界面初始化脚本，能更好的还原实际页面
- *
- * @param {Function=} filter - filter the fetched url, only worked while run function specified turns
- *  also could specified by run. If both set, specified by config take precedence over run.
- *  (like this function(getUrl()) {return [] })
- *
- * @returns {Promise}
- */
-function config(url, pattern, setting, filter) {
-    /**
-     * 可能的参数组合：
-     * 第一种：string, ..  (..表示pattern和setting，它们可以作为默认的参数)
-     * 第二种：[string, string], ..
-     * 第三种: [string, Object], ..
-     * 第四种: function(url){return {1,2,3种结果，不包含..}}, ..
-     * 第五种: function(url){return new Promise()} ,其resolve时，会传入{1,2,3种结果}, ..
-     */
-
-    /**
-     * 利用 Promise.resolve(data or thenable)可以合并以上参数产生的不同结果
-     */
-    if (typeof url === 'function')
-        url = url(getUrl());
-    _filter = filter || _filter;
-    _pattern = pattern || _pattern;
-    _setting = setting || _setting || {type: 'str', fixKeys: ['a', 'img']};
-    return Promise.resolve(url).then(function(url) {
-        return target = [url, _pattern, _setting]
-    })
+Crawler.default = function(obj) {
+  defaultCallback = obj.callback || defaultCallback
+  interval = obj.interval || interval
+  adapterName = obj.adapterName
 }
 
-/**
- * for internal use
- * @private
- */
-function _config(url, pattern, setting) {
-    target = [url, pattern, setting];
+// todo:
+Crawler.destroy = function() {
+  if (!Crawler.mode == 'browser')
+    throw Error("destroy can't be invoked except in browsers ")
 }
-
-/**
- * 根据指定资源类型type来取回已经从url页面上获取的资源
- * @param type - 指定的资源类型
- * @param [url] - 某个解析过的页面的url
- * @param [fromDB] - 是从db中取回资源，还是直接从上一次的结果中取回
- * @returns {*} - 取回的资源，根据不同的参数返回的数据结构不同
- */
-function getResource(type, url, fromDB) {
-    var ret;
-    if (type && url) {
-        if (results[url]) {
-            ret = results[url][type];
-        }
-    } else if (url) {
-        ret = results[url];
-    } else if (type) {
-        ret = {};
-        ret[type] = [];
-        for (url in results) {
-            var result = results[url];
-            if (result[type]) {
-                merge(ret[type], result[type])
-            }
-        }
-    }
-    return ret;
-}
-
-var on = eventEmitter.on.bind(eventEmitter),
-    addListener = eventEmitter.addListener.bind(eventEmitter),
-    removeListener = eventEmitter.removeListener.bind(eventEmitter),
-    removeAllListeners = eventEmitter.removeAllListeners.bind(eventEmitter);
-
-fetcher.onProgress(function() {
-    var args = Array.prototype.slice.call(arguments, 0);
-    args.unshift('progress');
-    eventEmitter.emit.apply(eventEmitter, args);
-});
-
-/**
- * 返回的url应该是{url:url},这样可以使得传入外部函数中的url对象拥有扩展的能力，产生像node中间件那样的回调链
- * @returns {{url:url}}
- */
-function getUrl() {
-    return getResource('a')
-}
-
-exports = module.exports = {
-    reset: reset,
-    run: run,
-    moveon: moveon,
-    pause: pause,
-    stop: stop,
-    config: config,
-    getRes: getResource,
-    on: on,
-    addListener: addListener,
-    removeListener: removeListener,
-    removeAllListener: removeAllListeners
-}
-
 }); // module: crawler.js
 
-require.register("dataStorage.js", function(exports, require, module){
 
-
-/**
- * 保存对应url的数据
- * @param url 要存储什么网页的资源，就用什么网页的url，此举会覆盖所有内容
- * @param {object} data
- * @param {string=} flag - w,a,a+
- *  w，默认值，表示覆盖原内容，
- *  a，表示将键值添加上去，若已存在相同键值的数据，则覆盖
- *  a+, 表示若已存在相同键值的数据则将新数据添加到后面
- */
-function save(url, data, flag) {
-
-}
-
-/**
- * 将数据添加到对应url的库里边（也许在save上加个w+就可以取消这个接口了）
- * @param url 同save
- * @param {object} data
- * @param {boolean=} flag - 指示若已存在相同键值的数据，是增添还是覆盖，默认为false,表示增添
- */
-function add(url, data, flag) {
-
-}
-
-/**
- * 加载数据
- * @param url
- * @param {string | [string] | {} | Function =} keys - 要读取的资源类型作为键值
- *  string:单个资源类型
- *  [string]:资源类型数组
- *  {key1:size1,key2:size2} or {key1:{size1:size,start1:index},key2:{}}
- *  function(data){exports = module.exports = {}}
- * @param {number=} size - 限制取出的数据条数，默认为0，即不限制；keys中的limit的优先级更高
- * @param {number=} start - 从第几条数据开始读，默认为0，keys中的优先级更高,可为负数
- * @returns {object}
- */
-function load(url, keys, size, start) {
-    return {}
-}
-
-/**
- * 移除数据
- * @param url - 若只有url参数则移除当前url对应的所有数据
- * @param {string | [string] | {} | Function =} keys - 要移除的资源类型作为键值
- *  string:单个资源类型
- *  [string]:资源类型数组
- *  {key1:limit1,key2:limit2} or {key1:{limit1:length,start1:index},key2:{}}
- *  function(data){return {}}
- * @param {number=} size - 限制移除的数据条数，默认为0，即不限制；keys中的limit的优先级更高
- * @param {number=} start - 从第几条数据开始移除，默认为0，keys中的优先级更高,可为负数
- */
-function remove(url, keys, size, start) {
-
-}
-
-/**
- * 随意增删改数据
- * @param url
- * @param {Function} action - function(data) {}
- */
-function manipulate(url, action) {
-
-}
-
-exports = module.exports = {
-    add: add,
-    save: save,
-    load: load,
-    remove: remove,
-    manipulate: manipulate
-}
-
-}); // module: dataStorage.js
-
-require.register("event.js", function(exports, require, module){
+require.register("events.js", function(exports, require, module){
 
 
 function EventEmitter() {
@@ -533,847 +390,595 @@ EventEmitter.prototype.removeAllListeners =
         return this;
     };
 
-}); // module: event.js
+}); // module: events.js
 
-require.register("fetcher.js", function(exports, require, module){
-/**
- * Created by lilith on 2014/8/6.
- */
 
-//TODO: 1.cookie. 如何对cookie进行控制，使得关闭和开启cookie可控
-//TODO: 2.valueLink. 用渲染后的dom结构来计算连接到关键词的距离可以有效衡量连接的权重
-//TODO: 3.controller. 对于fetch网页应当有一个外部控制，1.可一次运行多少轮；2.可一直运行，直到暂停命令，或外部条件使其暂停（也许总有一个使其暂停的条件比较好，1e9轮或url死循环？）
-//TODO: 4.weightPage. 对一张网页权重的衡量如果在fetcher中进行，可以借助DOM来进行，但从全体网页的角度来把握单张网页的权重似乎更合理
-//TODO: 5.target related with res. 让找出的资源不仅和url相关，还应该和目标相关（但并不总是需要这样，默认关闭吧）
-//TODO: 6.fetch pages continuously not turn after turn.
-//TODO: 7.iframe quantity constrain --30%
-//TODO: 8.fetch speed control for global and individual origin --30%
-//TODO: 9.filter the url having #~ suffix, may be place it to top context is better.
-//TODO: 10.robot.txt
-//TODO: 11.Node crawler
-//TODO: 12.distributed crawler
-//TODO: 13.remote decision of fetching URL --20%
-
-/**
- * hold window for postMessage
- */
-var eventEmitter, results,
-    class2type = {},
-    toString = class2type.toString,
-    REGEXP_RE = /^\/.+\/(?!.*([img]).*\1.*$)[img]{0,3}$/,
-    // TODO:using a factory to create a fetcher may be better.  support for node & browser
-    iframeFetcher = require('iframeFetcher'),
-    utils = require('utils'),
-    unique = utils.unique,
-    fixUrl = utils.fixUrl,
-    type = utils.type;
-
-eventEmitter = new (require('event').EventEmitter);
-
-/**
- * 当每个url请求的资源返回时，触发progress事件，可将不同的handler多次添加到此
- * @param {Function} callback - function(result, results), result: {url:., result:.}
- * @returns {object}
- */
-function onProgress(callback) {
-    eventEmitter.on('progress', callback);
-    return this;
-}
-
-function removeProgress(callback) {
-    eventEmitter.removeListener('progress', callback);
-    return this;
-}
-function removeAllProgresses() {
-    eventEmitter.removeAllListeners('progress');
-    return this;
-}
-
-/**
- * 根据url以及pattern来获取目标，当然是异步的,fetch回来url，应当继承其父url的pattern和setting
- * TODO: let the pattern argument append to the url.pattern, not mutex with it, or let be optional by some other arguments.
- * @param {string | [string, Object,..]} url - 目标url
- * @param {[regexp | Function | [] ]} pattern - the pattern for the wanted targets
- *  regexp: either directive-like string OR a RegExp literal string.
- *  []: [[RE, {key:key,index:index},{key:key, index:index}] | [RE, key] ..]: index表示要捕获组的id，key表示该组所匹配的字符在作为返回结果的一部分是所对应带名字
- *  function: function(doc,[]){exports = module.exports = {links:[], imgs:[], object:{..}}}；doc即可能是文档字符串，也可能是docDOM。视config而定
- * @param {Object} setting - {type:false,allow-scripts:false,page:false, repeat}
- *  type: 'str', 'img', 'dom' 表示使用dom来渲染,一般当第2个参数为函数，并且其doc需要是DOM时使用；若pattern为css选择器，则DOM自动true
- *  repeat: true,允许返回的资源可以重复，默认为false(undefined)
- *  fixKeys: [key1, key2,..]
- *  allow-scripts:允许页面可执行脚本；页面执行的脚本大多包含界面初始化脚本，能更好的还原实际页面
- *  page:表示是否获取页面本身，页面本身较大，是否有必要获取呢？默认不获取
- */
-function fetch(url, pattern, setting) {
-    results = {};
-    return new Promise(function(res) {
-        var urls, targets, length;
-        urls = type(url) == 'array' ? url : [url];
-        if (!pattern)
-            pattern = [];
-        handlePattern(pattern);
-        targets = makeTarget(urls, pattern, setting);
-        length = targets.length;
-        targets.forEach(function(target) {
-            iframeFetcher.fetch(target).then(function(data) {
-                var result = data.result,
-                    fixKeys = target.setting.fixKeys;
-
-                if (!target.setting.repeat && target.setting.type != 'img')
-                    for (var key in result)
-                        unique(result[key])
-
-                if (type(fixKeys) == 'array')
-                    fixKeys.forEach(function(key) {
-                        if (result[key])
-                            result[key] = fixUrl(data.url, result[key])
-                    });
-
-                results[data.url] = result;
-                eventEmitter.emit('progress', result, results);
-                if (!--length) {
-                    res(results)
-                }
-            })
-        })
+require.register("extractor.js", function(exports, require, module){
+function attrExtractor(tag, attr, alias) {
+  if (typeof tag != 'string' && typeof attr != 'string')
+    throw TypeError('tag and attr should be string')
+  var attrRE = new RegExp('<' + tag + ('\\b[^>]*?\\s'+ attr
+                              + '\\s*=\\s*("|\')([\\S\\s]*?)\\1')
+                              + '[^>]*\\/?>', 'ig')
+  return function(response) {
+    if (!response) return
+    var ret, array
+    attr = alias || attr
+    response.replace(attrRE, function(m, _, val) {
+      if (!ret) {
+        ret = {}
+        array = ret[attr] = []
+      }
+      array.push(val)
     })
+    return ret
+  }
 }
 
-/**
- * 获取图片的data url
- * @param src
- * @returns {*}
- */
-function getDataUrl(src) {
-    return fetch(src, {type: 'img'})
-}
+var linkExtractor = attrExtractor('a', 'href')
+
+exports.attrExtractor = attrExtractor
+exports.linkExtractor = linkExtractor
+}); // module: extractor.js
+
+
+require.register("iframe-pool.js", function(exports, require, module){
+var createLRUList = require('./lruList').createLRUList
+var util = require('./util')
+
+var getOrigin = util.getOrigin
+var urlEqual = util.urlEqual
+var saveResRej = util.saveResRej
+
+var win,
+    // iframe container in the dom tree
+    container,
+    // hash map of the work(includes creating) frame. url is the key,
+    // {URL:{remains:number, win:win, origin:origin},..}
+    workList,
+    // a LRU list holding the idle frames.
+    idleList,
+    // an array holds object like {url:url, win: promise, },
+    // representing the obj waiting for an available iframe
+    waitingQueue,
+    // using the url as the key, the index in waitingQueue as the value
+    waitingHash,
+    // max quantity of the iframes
+    capacity,
+    // timeout for window creating
+    timeout
+
+var some = Array.prototype.some
 
 /**
- * 将url，pattern，setting规范化为一个完备的target
- * @private
- * @param urls
- * @param patterns
- * @param setting
- * @returns {Array}
- */
-function makeTarget(urls, patterns, setting) {
-    //当存在两个url相同时要做什么容错吗？两个相同url会带来不必要的麻烦(若有两个setting，选哪个？)
-    var targets = [],
-        defaultArgs = {
-            pattern: patterns,
-            setting: setting || {type: 'str'}
-        },
-        target;
-    urls = type(urls) == 'array' ? urls : [urls];
-    urls.forEach(function(url) {
-        if (type(url) == 'string')
-            target = extend({url: regularizeUrl(url)}, defaultArgs)
-        else if (type(url) == 'object') {
-            if (!url.pattern && !patterns)
-                throw TypeError('url.pattern or patterns, at least exist one of them')
-            url.pattern = !url.pattern ? patterns : handlePattern(url.pattern)
-            url.setting = url.setting || {};
-            extend(url.setting, setting)
-            url.url = regularizeUrl(url.url)
-            target = url
-        } else throw TypeError('url must either be a string or a object')
-        targets.push(target)
-    })
-    return targets
-}
-
-/**
- * add 'http' prefix for those has no http prefix urls
+ * iframe pool
  * @param url
- * @returns {*}
+ * @param {Boolean} strict - match exactly if true. match origin if false
  */
-function regularizeUrl(url) {
-    if (url) {
-        if (!~url.indexOf('http://') && !~url.indexOf('https://')) {
-            url = 'http://' + url;
-        }
-        return url
+exports.getWindow = function(url, strict) {
+  try {
+    if (!idleList) exports.init(5, 10000)
+    return getWindow(url, strict)
+  } catch (e) {
+    return Promise.reject(e)
+  }
+}
+
+// after finish using window, free it.
+exports.free = function(win) {
+  if (!idleList || !util.isWindow(win)) return false
+
+  for (var url in workList) {
+    if (workList[url].win == win && !--workList[url].remains) {
+      delete workList[url]
+
+      if (waitingQueue.length) {
+        var wait = waitingQueue.unshift()
+        delete waitingHash[wait.url]
+        workList[wait.url] = wait
+        wait.win.resRej.resolve(createIframe(wait.url))
+      } else {
+        idleList.put(url, win)
+      }
+      return true
     }
-    throw TypeError('url must be not empty')
+  }
 }
 
-/**
- * extend the properties of src to dst
- * @private
- * @param {Object} dst
- * @param {Object} src
- * @param [overwrite] - if it is true, overwrite the property of dst with the same name property of src
- * @returns {*} dst self
- */
-function extend(dst, src, overwrite) {
-    if (type(dst) == 'object' && type(src) == 'object')
-        for (var k in src)
-            if (src.hasOwnProperty(k) && type(src[k]) != 'undefined' && (!(k in dst) || overwrite))
-                dst[k] = src[k];
-    return dst
+exports.init = function(size, timeout_) {
+  if (!idleList) {
+    idleList = createLRUList(capacity = size)
+  } else {
+    throw Error('iframe pool already init')
+  }
+  win = window
+  container = document.createElement('div')
+  container.style.display = 'none'
+  document.body.appendChild(container)
+  workList = {}
+  waitingQueue = []
+  waitingHash = {}
+  timeout = timeout_ > 0 ? timeout_ : 7000
+
+  win.addEventListener('message', function(event) {
+    var data = event.data,
+        iframe, promise, src
+    // TODO: use a property to do a simple auth.
+    if (!data || data.type != 'create') return
+
+    // find out message is send from which iframe, & detect redirect
+    !some.call(container.children, function(frm) {
+      iframe = frm
+      return frm.contentWindow == event.source
+    }) && (iframe = null)
+    if (!iframe) throw Error('message from a window which not in frame pool')
+
+    clearTimeout(iframe.timer)
+
+    src = iframe.src
+    if (!urlEqual(src, data.href)) { //redirect detect
+      console.warn('redirect happened! frame src: %s, msg url:', src, data.href)
+      if (getOrigin(src) != event.origin)
+        throw Error('cross-origin redirecting, from "'
+          + src + '" to "' + data.url + '"')
+      // same origin redirect, handle it like no redirect FOR NOW, todo
+    }
+
+    promise = workList[src].win
+    workList[src].win = iframe.contentWindow
+    promise.resRej.resolve({win: iframe.contentWindow})
+  })
 }
 
-/**
- * 处理pattern，封装成一个数组
- * @private
- * @param pattern - see fetch
- * @returns {Array} - [regexp | [regexp, {key1: index1, key2: index2}] | function-style-string,..]
- */
-function handlePattern(pattern) {
-    if (type(pattern) != 'array')
-        throw TypeError('pattern should be an array');
-    pattern.forEach(function(p, i) {
-        var key, pair;
-        switch (type(p)) {
-            case 'regexp':
-                key = '_result' + i;
-                pair = {};
-                pair[key] = 0;
-                p = [p, pair];
-                break;
-            case 'function':
-                p = p.toString();
-                break;
-            case 'array':
-                if (type(p[0]) != 'regexp')
-                    throw TypeError(p[0] + ' should be a RegExp')
-                if (type(p[1]) == 'string') {//if just a string, let it match the whole(0).
-                    key = p[1];
-                    p[1] = {};
-                    p[1][key] = 0;
-                }
-                break;
-            default :
-                throw TypeError('pattern type is wrong, see fetch.fetch:pattern')
-        }
-        pattern[i] = p;
+exports.clear = function() {
+  idleList.removeAll()
+  workList = {}
+  waitingQueue.length = 0
+  waitingHash = {}
+  container.innerHTML = ''
+}
+
+function getWindow(url, strict) {
+  var realUrl, _win, wait, obj
+
+  // find window in workList and idleList
+  for (var key in workList) {
+    if (compareUrl(strict, url, key)) {
+      realUrl = key
+      break
+    }
+  }
+  if (realUrl) {
+    workList[realUrl].remains++
+    _win = workList[realUrl].win
+
+    // if find & it's a promise
+    if (util.isPromise(_win)) return _win
+
+  } else if (realUrl = idleList.has(compareUrl.bind(null, strict, url))) {
+    _win = idleList.remove(realUrl)
+    workList[realUrl] = {
+      remains: 1,
+      win: _win
+    }
+  }
+  // if find, resolve it. can't resolve a cross-origin window directly
+  if (_win) return Promise.resolve({win: _win})
+
+  // if don't find, create a new one
+  // not full, create directly
+  if (container.childElementCount < capacity) {
+    return createIframe(url)
+
+    // full, but having idles
+  } else if (idleList.size() > 0) {
+    obj = idleList.pop()
+    some.call(container.children, function(iframe) {
+      if (iframe.src == obj.key) {
+        container.removeChild(iframe)
+        return true
+      }
     })
-    return pattern;
+    return createIframe(url)
+
+    // full, no idles, but already wait
+  } else if (url in waitingHash) {
+    wait = waitingQueue[waitingHash[url]]
+    wait.remains++
+    return wait.win
+
+    // full, no idle, no wait, so wait
+  } else { 
+    wait = {remains: 1, url: url}
+    obj = {}
+    wait.win = new Promise(saveResRej(obj))
+    wait.win.resRej = obj.resRej
+    waitingHash[url] = waitingQueue.length
+    waitingQueue.push(wait)
+    return wait.win
+  }
 }
 
-exports = module.exports = {
-    fetch: fetch,
-    getDataUrl: getDataUrl,
-    onProgress: onProgress,
-    removeProgress: removeProgress,
-    removeAllProgresses: removeAllProgresses
-}
-}); // module: fetcher.js
+function createIframe(url) {
+  var iframe, work, resRej
 
-require.register("iframeFetcher.js", function(exports, require, module){
-//test在某种程度上，可以阻止clawer脚本正常工作的方法是，让页面工作在top中，如不是top就用top.location.href="location.href"来改变，并且套上try catch，如有异常则不初始化页面，
+  iframe = document.createElement('iframe')
+  iframe.sandbox = 'allow-same-origin allow-scripts'
+  iframe.src = url
+  container.appendChild(iframe)
 
-var frames = {},
-    win = window,
-    eventEmitter = new (require('event').EventEmitter),
-    uid = 1,
-    container = document.createElement('div'),
-    fetchTypes = ['img', 'dom', 'str'],
-    // holds the fetching task
-    fetchPending = [],
-    busyOrigin = {},
-    // for easy test, holds the setTimeout's timer
-    timer = [],
-    concurrence = 0,
-    MAX_CONCURRENCE = 5,
-    MIN_INTERVAL_PER_ORIGIN = 2500,
-    ORIGIN_RE = /^https?:\/\/.+?(?:(?=\/)|$)/;
+  if (!workList[url]) {
+    workList[url] = {remains: 1}
+  } else {
+    workList[url].remains++
+  }
+  work = workList[url]
 
-container.style.display = 'none';
-container.id = 'frameContainer';
-document.body.appendChild(container);
-
-fetchTypes.forEach(function(key) {
-    frames[key] = {
-        // hold the frames ready to fetch. {iframe:., targetId2Res:., loading:.}
-        // It's need to check the work frames' idle state and MAYBE delete the frame at 2 moments:
-        //   1. when there has a request for an idle frame;
-        //   2. when fetching a resource finished.
-        // The state(empty or not) of the related item in the frameResQueue
-        // indicates a work frame is whether idle or not.
-        work: {},
-        pending: [],    // hold the resolves pair{origin:., res:.} waiting for the frame to create(not begin).
-        creating: {},   // hold the resolves waiting for the frame to create(in creating) using the origin as the key
-        maxLength: 3    // work queue's max length
+  work.win = new Promise(function(res, rej) {
+    iframe.timer = setTimeout(function() {
+      rej(Error('timeout:iframe-pool: ' + url))
+    }, timeout)
+    resRej = {
+      resolve: res,
+      reject: rej
     }
-});
-
-/**
- * str方式获取资源侦听
- */
-eventEmitter.on('str', function(targetId, url, result) {
-    fetchCallback(targetId, url, getOrigin(url), result, 'str')
-}).
-/**
- * dom方式获取资源侦听
- */
-    on('dom', function(targetId, url, result) {
-        fetchCallback(targetId, url, url, result, 'dom')
-    }).
-/**
- * frame创建完毕侦听
- */
-    on('frame', function(type, url, win) {
-        var queue = frames[type].creating[url];
-        if (queue) {
-            queue.forEach(function(resolve) {
-                //see wrapping's reason in `getWindow`
-                resolve([win])
-            })
-            delete frames[type].creating[url];
-            frames[type].work[url].loading = false;
-        }
-    }).
-/**
- * dataUrl获取侦听
- */
-    on('img', function(targetId, url, result) {
-        fetchCallback(targetId, url, url, result, 'img')
-    }).
-/**
- * DIFFERENT ORIGIN redirect. url is the old url, result is the redirecting url
- * fetch a different origin resource through xhr, would throw an error.
- * (it's transparent to js while redirect happened)
- * TODO:For now, just consider str fetch.
- */
-    on('redirect', function(targetId, url, result) {
-        // try free the old frame.
-        // copy the targetId2Res
-        // eliminate the concurrence
-        // setTimeout let the origin be idle, and call dofetch
-        // getWindow of the new origin
-        // mark the res as redirect
-        // fetch again
-        fetchCallback(targetId, url, getOrigin(url), result, 'redirect');
-    });
-
-function reset() {
-    container.innerHTML = '';
-    fetchPending.length = 0;
-    busyOrigin = {};
-    uid = 1;
-    concurrence = 0;
-    timer.forEach(function(t) {
-        clearTimeout(t);
-    });
-    timer.length = 0;
-    fetchTypes.forEach(function(key) {
-        frames[key] = {
-            work: {},
-            pending: [],
-            creating: {},
-            maxLength: 3
-        }
-    });
+  })
+  work.win.resRej = resRej
+  return work.win
 }
 
-function fetchCallback(targetId, targetUrl, frameUrl, result, type) {
-    var frameType = type == 'redirect' ? 'str' : type,
-        frame = frames[frameType].work[frameUrl],
-        res = frame.targetId2Res[targetId],
-        target = res._target;
-    if (res) {
-        delete frame.targetId2Res[targetId];
-        if (!Object.keys(frame.targetId2Res).length)
-            delete frame.targetId2Res;
+function compareUrl(strict, url, key) {
+  return strict ? urlEqual(url, key) : getOrigin(url) == getOrigin(key)
+}
 
-        // maybe after this fetch, the frame is idle and idle frames are needed.
-        cleanFrameQueue(frameType, frameUrl);
-        tryCreateFrame(frameType);
-        if (type == 'redirect') {
-            target.targetId = targetId;
-            redirectFetch(res, targetUrl, result);
-        } else {
-            var data = {url: targetUrl, result: result};
-            if (target.oldUrl) {
-                // if it's a redirect fetching result, set url as the old Url
-                result.$rediectUrl = targetUrl;
-                data.url = target.oldUrl;
-            }
-            res(data);
-        }
+}); // module: iframe-pool.js
 
-        // maybe after this fetch, a new fetch with different origin is exist;
-        if (type != 'img') {
-            concurrence--;
-            doFetch();
-            timer.push(setTimeout(function() {
-                // After the time of MIN_INTERVAL_PER_ORIGIN has elapsed, the origin is idle
-                delete busyOrigin[getOrigin(frameUrl)];
-                doFetch()
-            }, MIN_INTERVAL_PER_ORIGIN))
-        }
+
+require.register("lruList.js", function(exports, require, module){
+/**
+ * create a lru Cache
+ * @param length
+ * @returns {{put: Function, get: Function, remove: Function}}
+ */
+exports.createLRUList = function (length) {
+  var size = 0,
+    data = {},
+    capacity = length,
+    lruHash = {},
+    freshEnd = null,
+    staleEnd = null;
+
+  return {
+    put: function(key, value) {
+      var lruEntry = lruHash[key] || (lruHash[key] = {key: key});
+
+      refresh(lruEntry);
+
+      if (!(key in data)) size++;
+      data[key] = value;
+
+      if (size > capacity) {
+        this.remove(staleEnd.key);
+      }
+      return value;
+    },
+
+    get: function(key) {
+      var lruEntry = lruHash[key];
+      if (!lruEntry) return;
+      refresh(lruEntry);
+      return data[key];
+    },
+
+    /**
+     * @param {Function | String} key - function(realKey){return boolean}
+     * @returns {*} return the real key if argument 'key' is function, otherwise return boolean
+     */
+    has: function(key) {
+      var keys = Object.keys(lruHash), realKey;
+      if (typeof key == 'function') {
+        !keys.some(function(_key) {
+          realKey = _key;
+          return key(_key);
+        }) && (realKey = void 0);
+        return realKey
+      }
+      return keys.indexOf(key) != -1
+    },
+
+    pop: function() {
+      if (staleEnd) return {
+        key: staleEnd.key,
+        data: this.remove(staleEnd.key)
+      }
+    },
+
+    remove: function(key) {
+      var lruEntry = lruHash[key], ret;
+
+      if (!lruEntry) return;
+
+      if (lruEntry == freshEnd) freshEnd = lruEntry.p;
+      if (lruEntry == staleEnd) staleEnd = lruEntry.n;
+      link(lruEntry.p, lruEntry.n);
+
+      ret = data[key];
+      delete lruHash[key];
+      delete data[key];
+      size--;
+      return ret;
+    },
+
+    removeAll: function() {
+      data = {};
+      size = 0;
+      lruHash = {};
+      freshEnd = staleEnd = null;
+    },
+
+    size: function() {
+      return size;
     }
-}
+  };
 
-/**
- * handle the redirect fetching
- * @param res
- * @param oldUrl
- * @param newUrl
- */
-function redirectFetch(res, oldUrl, newUrl) {
-    var target = res._target,
-        origin;
+  /**
+   * makes the `entry` the freshEnd of the LRU linked list
+   */
+  function refresh(entry) {
+    if (entry != freshEnd) {
+      if (!staleEnd) {
+        staleEnd = entry;
+      } else if (staleEnd == entry) {
+        staleEnd = entry.n;
+      }
 
-    if (target.oldUrl) {
-        // do not redirect more than once
-        res(target.oldUrl, {
-            $error: 'redirect more than once',
-            $redirects: [
-                target.oldUrl,
-                oldUrl,
-                newUrl
-            ]
-        });
-        return;
+      link(entry.p, entry.n);
+      link(freshEnd, entry);
+      freshEnd = entry;
+      freshEnd.n = null;
     }
+  }
 
-    target.url = newUrl;
-    target.oldUrl = oldUrl;
-    origin = getOrigin(newUrl);
+  /**
+   *  p         n
+   * <-- entry -->
+   *
+   *     staleEnd           ....           freshEnd
+   *  .., entryX,  entry.p,  entry,  entry.n,  entryY ..
+   */
 
-    getWindow(origin, 'str').then(function(win) {
-        var _work = frames['str'].work[origin];
-        if (!_work.targetId2Res)
-            _work.targetId2Res = {};
-        _work.targetId2Res[target.targetId] = res;
-        tryFetch(win[0], 'str', target.url, target.pattern, target.targetId)
-    })
-}
-
-(function listenPostMessage() {
-    win.addEventListener('message', function(event) {
-        /**
-         * event has data property, it's structure like this:
-         *   {
-         *     type: "dataUrl" | "result" | "ready",
-         *     result: string if type is dataUrl, undefined if ready, {img:img,link:link,page:page,..} if result,
-         *     eventId: the eventId of target send to the iframe,
-         *     url: the url of the target,
-         *     [auth: some token for authentication.(Do Not receive any data)]
-         *     TODO: should encode the data send to the iframe? js of origin page in iframe can receive the data
-         *   }
-         */
-        var eventName = event.data.type,
-            data = event.data,
-            args;
-        if (!eventName || !checkAuth(data.auth)) {return}
-        switch (eventName) {
-            case 'frame':
-                args = [data.fetchType, data.url, event.source]; break;
-            case 'str':
-            case 'dom':
-            case 'redirect':
-                args = [data.targetId, data.url, data.result]; break;
-            case 'img':
-                args = [data.url, data.result]; break;
-            default :
-                throw Error('throw me one day')
-        }
-        args.unshift(eventName);
-        eventEmitter.emit.apply(eventEmitter, args)
-    })
-}())
-
-function checkAuth(auth) {
-    //TODO: let it be true for now
-    return true;
-}
-
-function getUid() {
-    return uid++;
-}
-
-/**
- * get the url‘s origin
- * @param url
- * @returns {*}
- */
-function getOrigin(url) {
-    if (ORIGIN_RE.test(String(url))) {
-        return RegExp['$&']
+  function link(prevEntry, nextEntry) {
+    if (nextEntry != prevEntry) {
+      if (nextEntry) nextEntry.p = prevEntry;
+      if (prevEntry) prevEntry.n = nextEntry;
     }
-    throw Error('url: "' + url + '" has no origin')
+  }
+}
+}); // module: lruList.js
+
+
+require.register("util.js", function(exports, require, module){
+var ORIGIN_RE = /^https?:\/\/.+?(?:(?=\/)|$)/
+
+exports.getOrigin = function(url) {
+  if (ORIGIN_RE.test(String(url))) return RegExp['$&']
 }
 
-/**
- * 清除已经没有获取目标的frame，之所以要频繁调用这个的原因是因为不想让闲置的frame占用资源（也许不靠谱）
- * @param [type] - 'dom', 'str', 'img'
- * @param [origin] - 若指定了一个origin，对指定origin尝试清除，否则对type所指定类型的所有frame进行清除
- */
-function cleanFrameQueue(type, origin) {
-    var checkTypes = type ? [type] : fetchTypes;
-    checkTypes.forEach(function(type) {
-        var work = frames[type].work;
-        if (origin) {
-            if (work[origin])
-                tryRemoveFrame(origin);
-        } else
-            for (origin in work)
-                tryRemoveFrame(origin);
-        function tryRemoveFrame(origin) {
-            // when the targetId2Res is empty object {}, it might not be right to
-            // consider the frame is idle. Because the promise is async, a just created
-            // frame with an empty targetId2Res would be used by the resolve callback
-            // after the running code is over.
-            if (!work[origin].targetId2Res) {
-                // if there is no request waiting, remove later(the iframe may be reused)
-                if (frames[type].maxLength - Object.keys(work).length) {
-                    timer.push(setTimeout(function() {
-                        try {
-                            // may be remove by others, it's not something big, so try catch silently
-                            if (!work[origin].targetId2Res) {
-                                container.removeChild(work[origin].iframe);
-                                delete  work[origin];
-                            }
-                        } catch (e) {
-                            console.log(e)
-                        }
-                    }, 3000));
-                } else { // if there is a request waiting for a new iframe, remove now
-                    container.removeChild(work[origin].iframe);
-                    delete  work[origin];
-                }
-            }
-        }
-    })
-}
-
-/**
- * Try to create iframes according to the _type. If no _type specified, try to create iframes all types.
- * Whether an iframe could be create or not depend on the idle status of the the wanted type's queue of
- * iframes and the pending queue's length. getWindow always return a window if the wanted iframe is working,
- * so if put an new iframe request into queue, there must be no wanted iframe in work.
- * @param _type - 'dom', 'str', 'img'
- */
-function tryCreateFrame(_type) {
-    // TODO: should add the action into some global setTimeout for preventing ex frequently.(MAYBE NOT, the below FOR prevent it)
-    var types = _type ? [_type] : fetchTypes;
-    types.forEach(function(type) {
-        var _frames = frames[type],
-            pending = _frames.pending,
-            remain = _frames.maxLength - Object.keys(_frames.work).length,
-            iframe, request;
-        while (remain-- && pending.length) {
-            iframe = document.createElement('iframe');
-            iframe.sandbox = 'allow-same-origin allow-scripts';
-            request = pending.shift();
-            // src may be auto added a '/' after origin by browsers
-            iframe.src = request.origin;
-            /**
-             * TODO: using name is not best choice, for name can be changed by the fetched page's js.
-             * Using name is to distinguish the origin-like url from the real origin url of a str frame
-             * Delay to create a str frame having the same src as the creating frame with the origin-like url
-             * may resolve it in some degree. But URL redirect may be the really big problem. But even if redirect
-             * happened, name would not be changed almost(except js), and it can be used to detect redirect,
-             * and URL redirect is more frequently happened than changing name.
-             */
-            iframe.name = type;
-            _frames.work[request.origin] = {
-                iframe: iframe,
-                loading: true,
-                targetId2Res: {}
-            };
-            container.appendChild(iframe);
-            _frames.creating[request.origin] = [request.res];
-        }
-    })
-}
-
-/**
- * 根据标准化的target目标，基于iframe来获取资源
- * @param {object} target - the target to be fetched. It's structure:
- *  {
- *    pattern: [[regexp, {key1: index1, key2: index2}] | function-style-string,..],
- *    url: url,
- *    setting: {
- *      type: 'str' | 'dom' | 'img'
- *    }
- *  }
- */
-function fetch(target) {
-    return new Promise(function(res) {
-        var type = target.setting.type || 'str',
-            url, targetId;
-        if (!fetchTypes.some(function(_type) {return _type == type}))
-            throw Error('no such type:' + type);
-        targetId = getUid();
-        url = type != 'str' ? target.url : getOrigin(target.url);
-        getWindow(url, type).then(function(win) {
-            var _work = frames[type].work[url];
-            if (!_work.targetId2Res)
-                _work.targetId2Res = {};
-            _work.targetId2Res[targetId] = res;
-            //if redirect happens, target is needed
-            res._target = target;
-            tryFetch(win[0], type, target.url, target.pattern, targetId)
-        })
-    })
-}
-
-/**
- * get window through an iframe
- * @param origin - origin if setting.type is 'str', otherwise a normal url
- * @param type - 'dom', 'img', or 'str'
- * @returns {Promise} - would be resolved with a [window]; The reason for wrapping window into array is that,
- * resolving a window with different origin would come to an error
- */
-function getWindow(origin, type) {
-    return new Promise(function(res) {
-        var _frames = frames[type],
-            frame = _frames.work[origin];
-
-        if (!frame) {
-            _frames.pending.push({
-                origin: origin,
-                res: res
-            });
-            cleanFrameQueue(type, origin);
-            tryCreateFrame(type);
-        } else if (frame.loading) {
-            // frame is already exist, but is loading.
-            _frames.creating[origin].push(res);
-        } else {
-            // frame is ready, just resolve
-            res([frame.iframe.contentWindow])
-        }
-    })
-}
-
-/**
- *
- * @param win
- * @param type - "img" | "str" | "dom"
- * @param url
- * @param pattern
- * @param targetId
- */
-function tryFetch(win, type, url, pattern, targetId) {
-    //TODO: message may be need to encode before send
-    var msg = {
-            type: type,
-            pattern: pattern,
-            targetId: targetId
-        };
-    if (type == 'str')
-        msg.url = url;
-    for (var key in msg) {
-        if (!key)
-            delete msg[key];
+exports.saveResRej = function(obj) {
+  return function(res, rej) {
+    obj.resRej = {
+      resolve: res,
+      reject: rej
     }
-    // skip control if type is img. If there is a window, just fetch the image
-    if (type == 'img') {
-        win.postMessage(msg, '*');
-        return;
-    }
-    fetchPending.push({win: win, msg: msg, origin: getOrigin(url)});
-    doFetch();
+  }
+}
+
+exports.isPromise = function(p) {
+  return p && !exports.isWindow(p) && typeof p.then == 'function'
+}
+
+exports.isWindow = function(win) {
+  return win && win.window === win
+}
+
+exports.isArrayLike = function(obj) {
+  if (!obj || exports.isWindow(obj)) return false
+  return !(typeof obj == 'string' || typeof obj.length != 'number')
+}
+
+// compare 2 absolute urls, regarding string `s` as
+// equal with the `s` version trailing with any number '/'
+exports.urlEqual = function(url1, url2) {
+  if (url1 == url2) return true
+  url1 = String(url1)
+  url2 = String(url2)
+  return url2.indexOf(url1.replace(/\/+$/, '')) != -1
 }
 
 /**
- * Do fetch resources in the conditions of max concurrence and origin's busy status
- * The closer the task in fetchPending near to 0, the higher precedence it gets.
- * Those tasks getting windows earlier, are closer to 0. But even if a task get the
- * chance to run, it still may be blocked when it's origin is busy(a task with this origin
- * is running), and then the one after it get the chance to run. If all is not satisfied
- * to run, do nothing, waiting for next time which may be occurred when a task is finished
- * or a new task get a window.
- */
-function doFetch() {
-    var item, origin;
-    for (var i = 0; i < fetchPending.length && MAX_CONCURRENCE - concurrence; i++) {
-        item = fetchPending[i];
-        origin = item.origin;
-        if (!busyOrigin[origin]) {
-            busyOrigin[origin] = true;
-            item.win.postMessage(item.msg, '*');
-            concurrence++;
-            fetchPending.splice(i, 1);
-            i--
-        }
-    }
-}
-
-exports = module.exports = {
-    fetch: fetch,
-    reset: reset
-}
-
-}); // module: iframeFetcher.js
-
-require.register("parser.js", function(exports, require, module){
-
-/**
- *
- * @param tag
- * @param attr
- */
-var tagPropRE = (function() {
-    //TODO:也许可以只用key作为属性名来捕捉字符串(但也只有属性名可以这么做)
-    var answer = {};
-    return function(tag, attr, name) {
-        if (!tag) {
-            return
-        }
-        var key = Array.prototype.join.call(arguments);
-        if (answer[key]) {
-            return answer[key]
-        }
-        var pair = {};
-        pair[name || tag] = 2;
-        return answer[key] = [
-            //new RegExp('<' + tag + (!attr ? '' : '\\b[^>]*?\\s' + attr + '\\s*=\\s*(["\'])([\\S\\s]*?)\\1') + '[^>]*/?>', 'ig'),
-            new RegExp('<' + tag + (!attr ? '' : '\\b[^>]*?\\s' + attr + '\\s*=\\s*("|\')([\\S\\s]*?)\\1') + '[^>]*\\/?>', 'ig'),
-            pair
-        ];
-    }
-})();
-
-/**
- * 批量生成需要的pattern
- * @param tagProps
- * @returns {Object|*}
- */
-var tagPropREs = function(tagProps) {
-    if (!(tagProps instanceof Array))
-        throw TypeError('tagProps should be an Array');
-    return tagProps.reduce(function(ret, pair) {
-        ret.push(tagPropRE.apply(null, pair));
-        return ret;
-    }, [])
-};
-
-exports.tagPropRE = tagPropRE;
-exports.tagPropREs = tagPropREs;
-
-}); // module: parser.js
-
-require.register("utils.js", function(exports, require, module){
-
-var class2type = {},
-    toString = class2type.toString,
-    push = [].push;
-
-"Boolean Number String Function Array Date RegExp Object Error".split(" ").forEach(function(name) {
-    class2type[ "[object " + name + "]" ] = name.toLowerCase()
-})
-
-var type = exports.type = function(obj) {
-    return obj == null ? String(obj) :
-        class2type[toString.call(obj)] || "object"
-};
-
-/**
- * merge src into dst. src and dst should have the same type either be Object or Array,
- * otherwise return dst without modifying.
- * @param {Array | Object} dst
- * @param {Array | Object} src
- * @param {boolean=} _unique
- * @returns {*} dst
- */
-exports.merge = function merge(dst, src, _unique) {
-    var dstType = type(dst),
-        srcType = type(src),
-        iDstType, iSrcType, item;
-
-    if (dstType == 'array' && srcType == 'array') {
-        push.apply(dst, src);
-        _unique && unique(dst);
-    }
-    if (srcType == 'object' && dstType == 'object') {
-        for (var key in src) {
-            item = src[key];
-            iDstType = type(dst[key]);
-            iSrcType = type(item);
-            if (iDstType == 'array' && iSrcType == 'array'){
-                push.apply(dst[key], item);
-                _unique && unique(dst[key])
-            }
-            else if (iDstType == 'object' && iSrcType == 'object')
-                merge(dst[key], item);
-            else
-                dst[key] = item;
-        }
-    }
-    return dst;
-};
-
-/**
- * make string array unique.(or, other type could use it's toString() as the key)
- * @param {string[]} array
- * @returns {Array}
- */
-var unique = exports.unique = function(array) {
-    if (type(array) == 'array' && array.length) {
-        var hash = {};
-        for (var i = 0; i < array.length; i++) {
-            var item = array[i];
-            if (!hash[item]) {
-                hash[item] = 1;
-            } else {
-                array.splice(i--, 1);
-            }
-        }
-    }
-    return array;
-};
-
-var ORIGIN_RE = /^https?:\/\/.+?(?:(?=\/)|$)/;
-var httpPrefix = 'http:';
-var httpsPrefix = 'https:';
-
-/**
- * 根据宿主页url，补全此页面的相对地址url
- * @param {string} regular - 协议名，端口都完整的宿主url
+ * 补全相对地址url
+ * @param {string} regUrl - 协议名，端口都完整的url
  * @param {string | [string]} urls 待补全的url
  * @returns {Array}
  */
-exports.fixUrl = function(regular, urls) {
-    var origin, path, ret;
+exports.absUrl = function(regUrl, urls) {
+  var origin, path, ret;
 
-    regular = regular.replace(ORIGIN_RE, '');
-    origin = RegExp['$&'];
-    if (!origin)
-        return null;
+  regUrl = regUrl.replace(ORIGIN_RE, '')
+  origin = RegExp['$&']
+  if (!origin)
+    return null
 
-    ret = [];
-    if (regular === '')
-        regular = '/';
-    path = regular.split('/');
-    path.pop();
-    urls = urls instanceof Array ? urls : [urls];
-    urls.forEach(function(url) {
-        if (url[0] == '/')
-            url = origin + url;
-        else if(url.indexOf(httpPrefix) && url.indexOf(httpsPrefix)) {
-            if (url[0] != '.')
-                url = './' + url;
-            url = origin + fix(path.slice(), url.split('/'));
-        }
-        ret.push(ampDecode(url));
-    });
+  ret = [];
+  if (regUrl === '')
+    regUrl = '/';
+  path = regUrl.split('/')
+  path.pop();
+  urls = Array.isArray(urls) ? urls : [urls]
+  urls.forEach(function(url) {
+    if (url[0] == '/')
+      url = origin + url
+    else if(url.indexOf('http:') && url.indexOf('https:')) {
+      if (url[0] != '.') url = './' + url
+      url = origin + fix(path.slice(), url.split('/'))
+    }
+    ret.push(url.replace(/&amp;/g, '&'))
+  })
 
-    return ret
-};
+  return ret
+}
 
 function fix(path, segs) {
-    for (var i = 0; i < segs.length; i++) {
-        var seg = segs[i];
-        if ('..' == seg) path.pop();
-        else if ('.' != seg) path.push(seg);
-    }
-    return path.join('/')
+  for (var i = 0; i < segs.length; i++) {
+    var seg = segs[i]
+    if ('..' == seg) path.pop()
+    else if ('.' != seg) path.push(seg)
+  }
+  return path.join('/')
 }
+}); // module: util.js
+
+
+require.register("adapters/browser-adapter.js", function(exports, require, module){
+var pool = require('../iframe-pool')
+var util = require('../util')
+
+var urls, oCrawler, defaultCallback, results, state
+var timeout, fetchTimer, runTimer, interval, fetchPromise
+var win = window
+
+module.exports = BrowserAdapter
 
 /**
- * translate &amp; to &
+ * Browser crawler constructor. Use Singleton Pattern to keep it simple
+ * @param {Array} urls_ - array-like object with a `length` property and a `splice` method
+ * @param {Object} oCrawler_ - using this to communicate with the outer crawler. The structure is like this:
+ *    {
+ *      emitDrain: function(){},
+ *      emitProgress: function(result){}, // the result argument is the result of `callback`
+ *      on: function(eventName){}, // eventName: 'run' | 'pause'
+ *    }
+ * @param {Function} callback - the default callback function to handle the fetched result.
+ * @param {number} [timeout_] - timeout for requests
+ * @param {number} [interval_] - the interval between tasks. Maybe changed in future.
+ * @constructor
  */
-function ampDecode(text) {
-    return text.replace(/&amp;/g, '&');
+function BrowserAdapter(urls_, oCrawler_, callback, interval_, timeout_) {
+  if (typeof urls_.length != 'number' || !oCrawler_
+    || typeof callback != 'function') throw TypeError('arguments error')
+
+  if (BrowserAdapter.instance) {
+    reset.apply(BrowserAdapter.instance, arguments)
+    return BrowserAdapter.instance
+  }
+  BrowserAdapter.instance = this
+
+  this.reset = reset
+  reset.apply(this, arguments)
+
+  win.addEventListener('message', function(event) {
+    var data = event.data
+    if (!data ||  !data.bolero) return
+    data.win = event.source
+    fetchPromise.resRej.resolve(data)
+  })
 }
 
-exports.proxy = function(target, name) {
-    return target
+// reset variables. If param is not designed, use the old value passed by Ctor
+function reset(urls_, oCrawler_, callback, interval_, timeout_) {
+  urls = urls_ || urls
+  oCrawler = oCrawler_ || oCrawler
+  defaultCallback = callback || defaultCallback
+  timeout = timeout_ || timeout || 20000
+  interval = interval_ || interval ||  1000
+
+  results = []
+  state = 'pause'
+
+  oCrawler.on('run', function() {
+    state != 'run' && run()
+  })
+  oCrawler.on('pause', function() {
+    state = 'pause'
+    if (runTimer) {
+      clearTimeout(runTimer)
+      runTimer = null
+    }
+  })
 }
-}); // module: utils.js
+
+function run() {
+  if (!urls.length) {
+    state = 'pause'
+    return oCrawler.emitDrain(results)
+  }
+
+  var url = urls.shift(), callback
+  if (url && typeof url == 'object') {
+    callback = url.callback
+    url = url.url
+  }
+  callback = callback || defaultCallback
+  if (typeof url != 'string' || typeof callback != 'function')
+    throw TypeError('url format is wrong, url' + url)
+
+  fetch(url, callback)
+
+  state = 'run'
+}
+
+function fetch(url, callback) {
+  var message = {
+    bolero: true,
+    url: url
+  }
+  if (typeof callback.domCallback == 'function')
+    message.domCallback = callback.domCallback.toString()
+
+  pool.getWindow(url, !!message.domCallback).then(function(win) {
+    win = win.win // can't resolve a cross-origin window directly
+    win.postMessage(message, '*')
+
+    var resRej
+    fetchPromise = new Promise(function(res, rej) {
+      fetchTimer = setTimeout(function() {
+        pool.free(win)
+        rej(Error('timeout:browser-adapter: ' + url))
+      }, timeout)
+      resRej = {
+        resolve: res,
+        reject: rej
+      }
+    })
+    fetchPromise.resRej = resRej
+    return fetchPromise
+
+  }).then(function(response) {
+    clearTimeout(fetchTimer)
+
+    pool.free(response.win)
+    response.win = null
+
+    // TODO: allow callback return a Promise?
+    var result = {
+      url: response.url,
+      data: callback(response.html, response),
+      timestamp: Date.now()
+    }
+    results.push(result)
+    oCrawler.emitProgress(result)
+
+    if (state == 'run'){
+      if (!urls.length) {
+        state = 'pause'
+        return oCrawler.emitDrain(results)
+      }
+      runTimer = setTimeout(run, interval)
+    }
+  }).catch(function(err) {
+    console.error(err.stack)
+    // TODO:emit error
+    oCrawler.emitProgress(err)
+  })
+}
+}); // module: adapters/browser-adapter.js

@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html>
+<html ng-app="demo">
 <head>
     <title>On Mark</title>
     <style>
@@ -13,6 +13,11 @@
         *{margin: 0}
         .domains{
             display: none;
+        }
+        section {
+            width: 61.8%;
+            margin:0 auto;
+
         }
         #display{
             padding: 0.62em;
@@ -34,93 +39,182 @@
             margin-right: 3px;
             box-shadow: 0 0 3px;
         }
+
+        #controller > article > * {
+            margin-bottom: 3px;
+        }
+
+        #config {
+            border: solid #EFD675 2px;
+            border-radius: 2px;
+        }
+        #config > * {
+            margin: 2px 0;
+        }
+
         #imgNum{
             color: #cd1914;
             font-weight: bold;
         }
+        li {
+            list-style: none;
+        }
+        li.img{
+            display: inline-block;
+            margin-right: 2px;
+        }
+        ul{
+            padding: 0;
+        }
+        #results {
+            border-left: #33458E solid;
+            text-align: initial;
+        }
+        .result {
+            border-left: solid #F0F8FF;
+            margin-bottom: 5px;
+            background-color: #FFDF00;
+        }
+        .result li:first-child {
+            border: solid #3355AB 2px;
+            border-radius: 2px;
+            background: #F5AB48;
+            margin-bottom: 5px;
+        }
     </style>
 </head>
-<body>
+<body ng-controller="ctrl">
 
 <section id="controller">
-    <!--
     <header><h2>window</h2></header>
     <article>
-        <label for="key">Start: </label>
-        <input type="text" id="key" placeholder="on your mark" data-value="http://www.douban.com/search?q=Evangelion"/>
-        <input type="button" id="go" value="GO!"/>
+        <label for="origin">Start: </label>
+        <input type="text" id="origin" placeholder="on your mark" ng-model="origin"/>
+        <input type="button" id="go" value="{{statusText}}" ng-click="start()"/>
+        <div id="config">
+            <div><input type="checkbox" id="originAsArray" ng-model="originAsArray"><label for="originAsArray"> treat origin as an array split with ',' </label></div>
+            <div class="filter">
+                <input type="text" id="imgFilter" ng-model="imgFilter"><label for="imgFilter"> img filter</label>
+            </div>
+            <div class="filter">
+                <input type="text" id="aFilter" ng-model="aFilter" placeholder="thread-928\d{4}-1"><label for="aFilter"> linkfilter</label>
+            </div>
+        </div>
     </article>
-    -->
 </section>
 <section id="domains" class="domains">
     <header></header>
     <article>
-
     </article>
 </section>
+
 <section id="display" class="box">
     Add tentacle.user.js to your TamperMonkey(chrome) or Greasemonkey(firefox), or just drag this file into the window of chrome://extensions/.<br>
     Open the console. After "pause, turn:1" has shown, call steptwo()
-    <!--
-    <header>Result Images: </header>
+    <hr/>
+    <header>Result Images: <button ng-click="collapseAll()">collapse all</button></header>
     <article>
-        <button id="loadMore" style="" disabled>show more images,remains <span id="imgNum">0</span> imgs</button><div style="clear:both"></div>
+        <ul id="results">
+            <li class="turn" ng-repeat="result in results">
+                <div ng-repeat="(key, resource) in result.data" class="result">
+                    <ul ng-if="key == 'src' || key == 'href'">
+                        <li class="url"><a target="_blank" href="{{result.url}}">{{key}}, {{result.url|limitTo:20}}..</a></li>
+                        <li ng-if="resource.$rediectUrl" class="url"><a target="_blank" href="{{resource.$rediectUrl}}">{{resource.$rediectUrl}}</a></li>
+
+                        <li ng-if="key == 'href'"><button ng-init="resource.showA=false" ng-click="resource.showA=!resource.showA">show link</button></li>
+                        <li ng-if="resource.showA" class="url-result" ng-repeat="a in resource | linkFilter: aFilter">{{a | limitTo : 50}}</li>
+
+                        <li ng-if="key == 'src'"><button ng-init="resource.showImg=false" ng-click="resource.showImg=!resource.showImg">show img</button></li>
+                        <li ng-if="resource.showImg" class="img" ng-repeat="pic in resource | filter: imgFilter">
+                            <img ng-src="{{pic}}">
+                        </li>
+                    </ul>
+                    <div class="fetch-me" ng-if="key == 'href'">
+                        <input type="button" ng-disabled="busy" ng-click="fetchMe(resource)" value="fetch me">
+                    </div>
+                </div>
+            </li>
+        </ul>
     </article>
-    -->
 </section>
 <script src="bolero.js"></script>
+<script src="bower_components/angularjs/angular.js"></script>
 <script>
-    var finalResult;
-    var turnResults = [];
-    var crawler = require('crawler');
-    var tagPropREs= require('parser').tagPropREs;
-    var turn = 1;
+    angular.module('demo', []).controller('ctrl', function($scope, bolero, $filter) {
+        $scope.origin = "http://www.douban.com/search?q=Evangelion";
+        $scope.getImg = true;
+        $scope.getA = true;
+        $scope.busy = true;
+        $scope.originAsArray = true;
+        $scope.statusText = 'start';
 
-    //监听turn，每轮结束后暂停，对获取的url进行筛选再继续fetch
-    crawler.on('turn', function(results) {
-        turnResults.push(results);
-        crawler.pause();
-        console.info('pause, turn:', turn++);
-        if (turn == 2) {
-            console.info('call steptwo() to continue fetching')
-        } else if (turn == 3) {
-            console.info('results');
-            console.info(results);
-        }
-    });
+        $scope.start = function() {
+            if (!$scope.origin) return
+            crawler.queue($scope.origin)
+            crawler.run()
+        };
+        $scope.fetchMe = function(links) {
+            $scope.busy = true;
+            crawler.queue($scope.aFilter ? filter(links, $scope.aFilter) : links).run()
+        };
+        $scope.collapseAll = function() {
+        };
 
-    //设置目标，
-    console.info('set init url to fetch.');
-    crawler.config('http://www.douban.com/search?q=Evangelion',
-            tagPropREs([['a', 'href'], ['img', 'src']])).then(function() {
-                crawler.run(5).then(function(results) {
-                    finalResult = results;
-                    console.log(results);
-                })
-            });
-
-    function configAndMoveon(url) {
-        crawler.config(function() {
-            console.info('simulate filtering the fetching url through remote service.');
-            return new Promise(function(res) {
-                setTimeout(function() {
-                    res(url);
-                },2000);
-            })
-        }).then(function() {
-            crawler.moveon();
+        var Crawler = bolero.Crawler
+        var absUrl = bolero.absUrl
+        var linkExt = bolero.linkExt
+        var imgExt = bolero.attrExt('img', 'src')
+        var crawler = new Crawler({
+            callback: function(html, response) {
+                var link = linkExt(html);
+                link.href = absUrl(response.url, unique(link.href))
+                var img = imgExt(html);
+                img.src = absUrl(response.url, unique(img.src))
+                link.src = img.src
+                return link
+            },
+            drain: function() {
+                $scope.busy = false
+                console.log('Crawling Done!');
+                $scope.$apply()
+            },
+            progress: function(result) {
+                console.log('progress: ' + result.url);
+                $scope.$apply()
+            }
         })
-    }
-    //第一轮获取资源完毕后，筛选url，进行第二轮资源获取
-    function steptwo() {
-/*        var _result = turnResults[0]['http://www.douban.com/search?q=Evangelion'].a;
-        _result = _result.slice(41, 66);
-        _result = _result.map(function(url) {
-            url = url.substring(url.indexOf('http%3A'), url.indexOf('&query='));
-            return decodeURIComponent(url);
-        })*/
-        configAndMoveon(turnResults[0]['http://www.douban.com/search?q=Evangelion'].a.slice(41, 46));
-    }
+        $scope.results = crawler.results;
+
+        var filter = $filter('linkFilter');
+
+        function unique(array) {
+            var obj = {}
+            array.forEach(function(item) {
+                if (obj[item]) return
+                obj[item] = true
+            })
+            return Object.keys(obj)
+        }
+
+    }).factory('bolero', function() {
+        return {
+            Crawler: require('crawler'),
+            linkExt: require('extractor').linkExtractor,
+            attrExt: require('extractor').attrExtractor,
+            absUrl: require('util').absUrl
+        };
+    }).filter('linkFilter', function() {
+      return function(array, re) {
+        if (!array || !re) return array
+        var ret =[], re = new RegExp(re)
+        array.forEach(function(link) {
+            if (re.test(link)) {
+                ret.push(link)
+            }
+        })
+          return ret
+      }
+    })
 </script>
 </body>
 </html>

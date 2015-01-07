@@ -1,16 +1,12 @@
 
-RAW = $(shell find lib -maxdepth 1 -name "*.js" -type f)
+RAW = $(shell find lib -maxdepth 1 -name "*.js" -type f) lib/adapters/browser-adapter.js
 
 all: bolero.js
 
 bolero.js: $(RAW)
 	@node support/compile $(RAW)
 
-test: $(RAW)
-	@node support/compile -t $(RAW)
-
 clean:
 	rm -f bolero.js
-	rm -f _bolero.js
 
-.PHONY: all clean test
+.PHONY: all clean

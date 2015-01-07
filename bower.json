@@ -12,5 +12,9 @@
     "Makefile",
     "package.json",
     "README.md"
-  ]
+  ],
+  "devDependencies": {
+    "mocha": "^2.0.0",
+    "should": "^4.0.0"
+  }
 }
