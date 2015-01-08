@@ -69,6 +69,10 @@ var Crawler = require('bolero')
 - To run it in Node, and fetch data through browser(domCallback is available).
 ```js
 var Crawler = require('bolero')
+    // Node2browser will open chrome to run a browserCrawler in the page
+    // 'http://localhost:9998'. For now, it just support chrome alone. But,
+    // you could open another browser installed with tentacle.user.js to visit
+    // 'http://localhost:9998' to continue it manually.
   , crawler = new Crawler({name: 'node2browser-adapter'})
 ```
 
