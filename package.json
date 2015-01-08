@@ -16,8 +16,7 @@
   "dependencies": {
     "express": "^4.0.0",
     "crawler": "~0.4.1",
-    "socket.io": "^1.2.1",
-    "socket.io-client": "^1.2.1"
+    "socket.io": "^1.2.1"
   },
   "devDependencies": {
     "karma": "^0.12.30",
