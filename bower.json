@@ -1,6 +1,6 @@
 {
   "name": "bolero",
-  "main": "[bolero.js, tentacle.js]",
+  "main": "[bolero.js, tentacle.user.js]",
   "version": "0.1.5",
   "ignore": [
     "lib",
@@ -10,7 +10,10 @@
     ".npmignore",
     "_bolero.js",
     "Makefile",
-    "package.json"
+    "package.json",
+    ".travis.yml",
+    "index.js",
+    "karma.conf.js"
   ],
   "devDependencies": {
     "mocha": "^2.0.0",
