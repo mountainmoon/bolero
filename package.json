@@ -1,7 +1,7 @@
 {
   "name": "bolero",
-  "version": "0.1.4",
-  "description": "a web crawler for browsers(and maybe for Node in future)",
+  "version": "0.1.5",
+  "description": "Web crawler for Node and browsers",
   "homepage": "https://github.com/mountainmoon/bolero",
   "keywords": [
     "crawler",
