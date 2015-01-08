@@ -760,6 +760,7 @@ exports.createLRUList = function (length) {
 
 require.register("util.js", function(exports, require, module){
 var ORIGIN_RE = /^https?:\/\/.+?(?:(?=\/)|$)/
+  , FUNCTION_RE = /^function\s*?\([\s\S]*?\)\s*?\{[\s\S]*?}\s*$/
 
 exports.getOrigin = function(url) {
   if (ORIGIN_RE.test(String(url))) return RegExp['$&']
@@ -787,6 +788,10 @@ exports.isArrayLike = function(obj) {
   return !(typeof obj == 'string' || typeof obj.length != 'number')
 }
 
+exports.isFunctionString = function(fn) {
+  return typeof fn == 'string' && FUNCTION_RE.test(fn)
+}
+
 // compare 2 absolute urls, regarding string `s` as
 // equal with the `s` version trailing with any number '/'
 exports.urlEqual = function(url1, url2) {
@@ -797,9 +802,9 @@ exports.urlEqual = function(url1, url2) {
 }
 
 /**
- * 补全相对地址url
- * @param {string} regUrl - 协议名，端口都完整的url
- * @param {string | [string]} urls 待补全的url
+ * resolve urls to absolute url based on the given url
+ * @param {string} regUrl - the based absolute url
+ * @param {string | [string]} urls to resolve
  * @returns {Array}
  */
 exports.absUrl = function(regUrl, urls) {
@@ -933,7 +938,8 @@ function fetch(url, callback) {
     bolero: true,
     url: url
   }
-  if (typeof callback.domCallback == 'function')
+  if (typeof callback.domCallback == 'function'
+    || util.isFunctionString(callback.domCallback))
     message.domCallback = callback.domCallback.toString()
 
   pool.getWindow(url, !!message.domCallback).then(function(win) {
@@ -958,7 +964,8 @@ function fetch(url, callback) {
     clearTimeout(fetchTimer)
 
     pool.free(response.win)
-    response.win = null
+    delete response.win
+    delete response.bolero
 
     // TODO: allow callback return a Promise?
     var result = {

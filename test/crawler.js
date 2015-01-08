@@ -133,7 +133,7 @@ function test(name){
       });
     })
 
-    if (!isBrowser) return
+    if (name == 'node-adapter') return
     describe("callback.domCallback", function() {
       it("should be passed to the fetching window, and handle the DOM to get a result which will be passed back", function(done) {
         var callback = function(html, response) {
