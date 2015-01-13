@@ -8,7 +8,6 @@
     "test",
     ".gitignore",
     ".npmignore",
-    "_bolero.js",
     "Makefile",
     "package.json",
     ".travis.yml",
