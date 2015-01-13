@@ -30,7 +30,7 @@ crawler = new Crawler({
     // extract and return your data.
   },
 
-  // called after callback to do some common operations. optional
+  // called after 'callback' to do some common operations. optional
   progress: function(result /*the result returned by callback*/){}
 
   // called if all urls are fetched. optional
