@@ -76,7 +76,7 @@ var Crawler = require('bolero')
   , crawler = new Crawler({name: 'node2browser-adapter'})
 ```
 
-See more examples in [test](https://github.com/mountainmoon/bolero/tree/master/tests)
+See more examples in [test](https://github.com/mountainmoon/bolero/tree/master/test)
 
 Licence
 -------
